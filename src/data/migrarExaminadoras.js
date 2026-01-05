@@ -1,0 +1,21 @@
+export const EXAMINADORAS = [
+  { city: "Cabreúva", name: "Adriana F. de Oliveira", contact: "11995665444" },
+  { city: "Cabreúva", name: "Francine de A. Souza", contact: "1199275892" },
+  { city: "Caieiras", name: "Edlaine F. Oliveira Assunção", contact: "11975933057" },
+  { city: "Caieiras", name: "Roseli R. F. Lima", contact: "11987134938" },
+  { city: "Cajamar", name: "Vanessa Alves Hornos Souza", contact: "11976537537" },
+  { city: "Campo Limpo Pta.", name: "Debora C. R. Mateus", contact: "11972276711" },
+  { city: "Francisco Morato", name: "Ester Géglio de Moraes", contact: "11999889084" },
+  { city: "Francisco Morato", name: "Noemi Ribeiro da Silva Jesus", contact: "11969860996" },
+  { city: "Francisco Morato", name: "Sueli P. Ribeiro", contact: "11983096759" },
+  { city: "Franco da Rocha", name: "Silvia M. B. Lisboa", contact: "11971763967" },
+  { city: "Franco da Rocha", name: "Sonia R. R. A. Ribeiro", contact: "11973749100" },
+  { city: "Franco da Rocha", name: "Virginia V. Pereira", contact: "11953548843" },
+  { city: "Itatiba", name: "Claudia R. S. Gonçalves", contact: "11961878120" },
+  { city: "Itupeva", name: "Daniela Zavata Oliveira", contact: "11952311592" },
+  { city: "Jundiaí", name: "Elisabete R. de Moraes", contact: "11998372561" },
+  { city: "Jundiaí", name: "Iara Depiatti", contact: "11984077455" },
+  { city: "Jundiaí", name: "Laís Gonçalves Turqueti Correa", contact: "11981289312" },
+  { city: "Jundiaí", name: "Tania C. P. Lestingi", contact: "11975464421" },
+  { city: "Várzea Paulista", name: "Maria Marta N. de Oliveira", contact: "11997994944" }
+];

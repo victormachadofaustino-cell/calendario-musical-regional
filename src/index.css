@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+  }
+
+  * {
+    /* Impede o "quadrado azul" ao tocar em botões no Chrome/Android */
+    -webkit-tap-highlight-color: transparent;
+    /* Impede o menu de contexto (clique longo) em todo o app */
+    -webkit-touch-callout: none;
+    /* Impede a seleção de texto acidental em todo o app */
+    -webkit-user-select: none;
+    user-select: none;
+    outline: none;
+  }
+
+  body {
+    @apply bg-[#F1F5F9] text-slate-950 antialiased;
+    /* Garante que o app ocupe a altura exata da tela visível (Mobile Friendly) */
+    height: 100dvh;
+    width: 100vw;
+    /* Previne o "puxar para atualizar" nativo do navegador */
+    overscroll-behavior-y: contain;
+    overflow-x: hidden;
+    position: fixed;
+  }
+
+  /* Permite seleção de texto APENAS onde é necessário (inputs de login e busca) */
+  input, textarea {
+    -webkit-user-select: text;
+    user-select: text;
+    user-select: text;
+  }
+
+  #root {
+    height: 100%;
+    width: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Esconde a barra de rolagem mas mantém a funcionalidade (Estética de App) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Animações de entrada suaves */
+@keyframes in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-in {
+  animation: in 0.4s ease-out forwards;
+}
+
+/* Ajuste fino para modais e portais */
+.portal-root {
+  position: relative;
+  z-index: 9999;
+}
