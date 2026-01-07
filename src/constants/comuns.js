@@ -1,3 +1,21 @@
+// src/constants/comuns.js
+
+/**
+ * Função Única de Normalização para todo o App.
+ * Remove acentos, espaços extras e padroniza termos como 'Paulista' e 'Pta'.
+ */
+export const normalizarTexto = (t) => {
+  if (!t) return "";
+  return t
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\bPAULISTA\b/g, "")
+    .replace(/\bPTA\b/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+};
+
 export const LISTA_COMUNS_COORDENADAS = [
   // --- CAIEIRAS ---
   { cidade: "Caieiras", localidade: "Sítio Aparecida", lat: -23.3512, lon: -46.7588 },
@@ -162,15 +180,16 @@ export const LISTA_COMUNS_COORDENADAS = [
   { cidade: "Jundiaí", localidade: "Vila Esperança", lat: -23.1922, lon: -46.8611 }
 ];
 
-// Função auxiliar para encontrar coordenadas com normalização
+/**
+ * Encontra as coordenadas de uma localidade específica.
+ * Utiliza a função normalizarTexto para garantir precisão no de/para.
+ */
 export const buscarCoordenadas = (cidade, localidade) => {
-  const norm = (t) => t?.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\bPAULISTA\b|\bPTA\b/g, "").replace(/\s+/g, "").trim();
-  
-  const cNorm = norm(cidade);
-  const lNorm = norm(localidade);
+  const cNorm = normalizarTexto(cidade);
+  const lNorm = normalizarTexto(localidade);
 
   const comum = LISTA_COMUNS_COORDENADAS.find(c => 
-    norm(c.cidade).includes(cNorm) && norm(c.localidade) === lNorm
+    normalizarTexto(c.cidade).includes(cNorm) && normalizarTexto(c.localidade) === lNorm
   );
   return comum ? { lat: comum.lat, lon: comum.lon } : null;
 };

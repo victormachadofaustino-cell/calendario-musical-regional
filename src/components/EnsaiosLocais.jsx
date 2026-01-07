@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { db, auth } from '../firebaseConfig';
+import { db } from '../firebaseConfig';
 import { collection, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { MapPin, Clock, User, AlertTriangle, Search, Filter, Edit3, Send, X, Share2, Navigation, Plus, Trash2, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
 import Feedback from './Feedback';
 
-// Importação das constantes centralizadas e da função de busca de coordenadas
+// Importação das constantes centralizadas e funções utilitárias
 import { CIDADES_LISTA } from '../constants/cidades';
-import { buscarCoordenadas } from '../constants/comuns';
+import { buscarCoordenadas, normalizarTexto } from '../constants/comuns';
 
 const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user }) => {
   const [busca, setBusca] = useState('');
@@ -32,23 +32,11 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
   const SEMANAS_LISTA = ["1ª", "2ª", "3ª", "4ª", "Últ."];
   const DIAS_SIGLAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-  // Normalização para segurança e filtros
-  const normalizarParaComparacao = (texto) => {
-    if (!texto) return "";
-    return texto
-      .toUpperCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "") 
-      .replace(/PAULISTA/g, "")       
-      .replace(/PTA/g, "")             
-      .replace(/\s+/g, "")             
-      .trim();
-  };
-
+  // Trava de segurança para sugestões baseada na cidade do usuário
   const podeSugerirAlteracao = (e) => {
     if (isMaster) return true;
-    const cidadeUser = normalizarParaComparacao(user?.cidade);
-    const cidadeEnsaio = normalizarParaComparacao(e.cidade);
+    const cidadeUser = normalizarTexto(user?.cidade);
+    const cidadeEnsaio = normalizarTexto(e.cidade);
     return cidadeUser !== "" && cidadeEnsaio !== "" && (cidadeUser.includes(cidadeEnsaio) || cidadeEnsaio.includes(cidadeUser));
   };
 
@@ -66,26 +54,19 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
     };
   }, [diaFiltroApp]);
 
-  // FUNÇÃO DE ROTA ATUALIZADA: Prioriza Lat/Long do arquivo comuns.js
   const abrirMapa = (app, localidade, cidade) => {
     const coords = buscarCoordenadas(cidade, localidade);
     let destino;
 
     if (coords) {
-      // Se encontrou na lista oficial, usa a coordenada exata
       destino = `${coords.lat},${coords.lon}`;
     } else {
-      // Fallback: pesquisa por texto
       destino = encodeURIComponent(`CCB ${localidade} ${cidade}`);
     }
 
     const links = { 
-      google: coords 
-        ? `https://www.google.com/maps/search/?api=1&query=${destino}` 
-        : `https://www.google.com/maps/search/?api=1&query=${destino}`, 
-      waze: coords
-        ? `https://waze.com/ul?ll=${destino}&navigate=yes`
-        : `https://waze.com/ul?q=${destino}&navigate=yes` 
+      google: `https://www.google.com/maps/search/?api=1&query=${destino}`, 
+      waze: `https://waze.com/ul?${coords ? 'll=' : 'q='}${destino}&navigate=yes` 
     };
 
     window.open(links[app], '_blank');
@@ -93,7 +74,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
   };
 
   const compartilharWapp = (e) => {
-    const msg = `*Ensaio Local CCB*\n📍 ${e.localidade} - ${e.cidade}\n🗓️ ${e.dia} às ${e.hora}\n👤 Encarregado: ${e.encarregado || 'N/I'}\n\n🚙 Como chegar: https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('CCB ' + e.localidade + ' ' + e.cidade)}`;
+    const msg = `*Ensaio Local CCB*\n📍 ${e.localidade} - ${e.cidade}\n🗓️ ${e.dia} às ${e.hora}\n👤 Encarregado: ${e.encarregado || 'N/I'}`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
@@ -139,19 +120,27 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
   const ensaiosFiltradosFinal = useMemo(() => {
     let filtrados = [...todosEnsaios];
     
-    if (semanaSelecionada) filtrados = filtrados.filter(e => e.dia.includes(semanaSelecionada));
+    if (semanaSelecionada) {
+        const termoBusca = semanaSelecionada.replace(/\D/g, "") || "Últ";
+        filtrados = filtrados.filter(e => e.dia.includes(termoBusca));
+    }
+
     if (diaSelecionado) filtrados = filtrados.filter(e => e.dia.includes(diaSelecionado));
-    if (filtroCidade !== 'Todas') filtrados = filtrados.filter(e => normalizarParaComparacao(e.cidade) === normalizarParaComparacao(filtroCidade));
+    
+    if (filtroCidade !== 'Todas') {
+        const cidadeNormalizada = normalizarTexto(filtroCidade);
+        filtrados = filtrados.filter(e => normalizarTexto(e.cidade) === cidadeNormalizada);
+    }
     
     if (busca) {
-      const b = normalizarParaComparacao(busca);
+      const b = normalizarTexto(busca);
       filtrados = filtrados.filter(e => 
-        normalizarParaComparacao(e.localidade).includes(b) || 
-        (e.encarregado && normalizarParaComparacao(e.encarregado).includes(b))
+        normalizarTexto(e.localidade).includes(b) || 
+        (e.encarregado && normalizarTexto(e.encarregado).includes(b))
       );
     }
 
-    const PESO_SEMANA = { "1ª": 1, "2ª": 2, "3ª": 3, "4ª": 4, "Últ": 5 };
+    const PESO_SEMANA = { "1ª": 1, "1º": 1, "2ª": 2, "2º": 2, "3ª": 3, "3º": 3, "4ª": 4, "4º": 4, "Últ": 5 };
     const PESO_DIA = { "Dom": 0, "Seg": 1, "Ter": 2, "Qua": 3, "Qui": 4, "Sex": 5, "Sáb": 6 };
 
     return filtrados.sort((a, b) => {
@@ -165,16 +154,9 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
       const diffDia = (PESO_DIA[diaA] || 99) - (PESO_DIA[diaB] || 99);
       if (diffDia !== 0) return diffDia;
 
-      const diffHora = a.hora.localeCompare(b.hora);
-      if (diffHora !== 0) return diffHora;
-
-      return a.localidade.localeCompare(b.localidade, undefined, { numeric: true });
+      return a.hora.localeCompare(b.hora) || a.localidade.localeCompare(b.localidade, undefined, { numeric: true });
     });
   }, [todosEnsaios, semanaSelecionada, diaSelecionado, filtroCidade, busca]);
-
-  const cidadesAtivas = useMemo(() => {
-    return ['Todas', ...new Set(todosEnsaios.map(e => e.cidade))].sort();
-  }, [todosEnsaios]);
 
   if (loading) return <div className="py-20 text-center animate-pulse font-black text-[10px] uppercase tracking-[0.5em]">Sincronizando Banco...</div>;
 
@@ -220,8 +202,8 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
       </div>
 
       <div className="space-y-4 px-6 pb-24 mt-6">
-        {CIDADES_LISTA.filter(c => (filtroCidade === 'Todas' || normalizarParaComparacao(c) === normalizarParaComparacao(filtroCidade))).map(cidade => {
-          const ensaios = ensaiosFiltradosFinal.filter(e => normalizarParaComparacao(e.cidade) === normalizarParaComparacao(cidade));
+        {CIDADES_LISTA.filter(c => (filtroCidade === 'Todas' || normalizarTexto(c) === normalizarTexto(filtroCidade))).map(cidade => {
+          const ensaios = ensaiosFiltradosFinal.filter(e => normalizarTexto(e.cidade) === normalizarTexto(cidade));
           const isAberta = cidadeAberta === cidade;
           if (ensaios.length === 0) return null;
 
@@ -280,7 +262,58 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
         })}
       </div>
 
-      {/* PORTALS */}
+      {/* MODAL EDITAR OU SUGERIR OU ADICIONAR */}
+      {(sugestaoAberta || mostraAdd) && createPortal(
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
+          <div className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left pointer-events-auto">
+            <button onClick={() => { setSugestaoAberta(null); setMostraAdd(false); }} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90 transition-all"><X size={18}/></button>
+            <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950 leading-none">
+                {mostraAdd ? 'Novo Ensaio' : (isMaster ? 'Editar Ensaio' : 'Sugestão')}
+            </h3>
+            <form onSubmit={mostraAdd ? handleAddEnsaio : enviarSugestao} className="space-y-3 mt-6">
+              <div className="flex flex-col gap-1">
+                <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Cidade</span>
+                <select value={mostraAdd ? novoEnsaio.cidade : (formSugestao.cidade || sugestaoAberta?.cidade)} 
+                        onChange={ev => mostraAdd ? setNovoEnsaio({...novoEnsaio, cidade: ev.target.value}) : setFormSugestao({...formSugestao, cidade: ev.target.value})} 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold outline-none uppercase">
+                  {CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Comum</span>
+                <input required type="text" value={mostraAdd ? novoEnsaio.localidade : formSugestao.localidade} 
+                       onChange={ev => mostraAdd ? setNovoEnsaio({...novoEnsaio, localidade: ev.target.value}) : setFormSugestao({...formSugestao, localidade: ev.target.value})} 
+                       className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold uppercase outline-none shadow-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Dia (Ex: 2ª Sex)</span>
+                  <input required type="text" value={mostraAdd ? novoEnsaio.dia : formSugestao.dia} 
+                         onChange={ev => mostraAdd ? setNovoEnsaio({...novoEnsaio, dia: ev.target.value}) : setFormSugestao({...formSugestao, dia: ev.target.value})} 
+                         className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold uppercase outline-none shadow-none" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Hora</span>
+                  <input required type="time" value={mostraAdd ? novoEnsaio.hora : formSugestao.hora} 
+                         onChange={ev => mostraAdd ? setNovoEnsaio({...novoEnsaio, hora: ev.target.value}) : setFormSugestao({...formSugestao, hora: ev.target.value})} 
+                         className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold outline-none shadow-none" />
+                </div>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Encarregado</span>
+                <input type="text" value={mostraAdd ? novoEnsaio.encarregado : formSugestao.encarregado} 
+                       onChange={ev => mostraAdd ? setNovoEnsaio({...novoEnsaio, encarregado: ev.target.value}) : setFormSugestao({...formSugestao, encarregado: ev.target.value})} 
+                       className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold uppercase outline-none shadow-none" />
+              </div>
+              <button disabled={enviando} type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest flex justify-center items-center gap-2 active:scale-95 shadow-xl transition-all mt-4">
+                <Send size={16}/> {enviando ? 'Processando...' : (isMaster ? 'Salvar no Banco' : 'Enviar Sugestão')}
+              </button>
+            </form>
+          </div>
+        </div>, document.body
+      )}
+
+      {/* CONFIRMA EXCLUSÃO */}
       {confirmaExclusao && createPortal(
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
           <div className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-center">
@@ -290,27 +323,6 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
               <button onClick={handleExcluirDefinitivo} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95">Confirmar</button>
               <button onClick={() => setConfirmaExclusao(null)} className="w-full bg-slate-100 text-slate-400 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest">Cancelar</button>
             </div>
-          </div>
-        </div>, document.body
-      )}
-
-      {mostraAdd && createPortal(
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
-          <div className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left pointer-events-auto">
-            <button onClick={() => setMostraAdd(false)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90"><X size={18}/></button>
-            <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950">Novo Ensaio</h3>
-            <form onSubmit={handleAddEnsaio} className="space-y-3 mt-6">
-              <select value={novoEnsaio.cidade} onChange={ev => setNovoEnsaio({...novoEnsaio, cidade: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold outline-none">
-                {CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <input required type="text" placeholder="Comum" value={novoEnsaio.localidade} onChange={ev => setNovoEnsaio({...novoEnsaio, localidade: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold uppercase outline-none shadow-none" />
-              <div className="grid grid-cols-2 gap-2">
-                <input required type="text" placeholder="Ex: 4ª Sáb" value={novoEnsaio.dia} onChange={ev => setNovoEnsaio({...novoEnsaio, dia: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold uppercase outline-none shadow-none" />
-                <input required type="time" value={novoEnsaio.hora} onChange={ev => setNovoEnsaio({...novoEnsaio, hora: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold outline-none shadow-none" />
-              </div>
-              <input type="text" placeholder="Encarregado" value={novoEnsaio.encarregado} onChange={ev => setNovoEnsaio({...novoEnsaio, encarregado: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold uppercase outline-none shadow-none" />
-              <button disabled={enviando} type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] active:scale-95 shadow-xl transition-all">Salvar</button>
-            </form>
           </div>
         </div>, document.body
       )}
@@ -330,43 +342,6 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
               </button>
             </div>
             <button onClick={() => setMapaSeletor(null)} className="w-full mt-6 py-4 text-slate-400 text-[10px] font-black uppercase text-center">Cancelar</button>
-          </div>
-        </div>, document.body
-      )}
-
-      {sugestaoAberta && createPortal(
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
-          <div className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left pointer-events-auto">
-            <button onClick={() => setSugestaoAberta(null)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90 transition-all"><X size={18}/></button>
-            <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950 leading-none">{isMaster ? 'Editar Ensaio' : 'Sugestão'}</h3>
-            <p className="text-slate-400 text-[10px] font-bold uppercase mt-2 tracking-widest">{sugestaoAberta.localidade}</p>
-            <form onSubmit={enviarSugestao} className="space-y-3 mt-6">
-              <div className="flex flex-col gap-1">
-                <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Comum</span>
-                <input required type="text" value={formSugestao.localidade} onChange={ev => setFormSugestao({...formSugestao, localidade: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold uppercase outline-none shadow-none" />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Dia</span>
-                  <input required type="text" value={formSugestao.dia} onChange={ev => setFormSugestao({...formSugestao, dia: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold uppercase outline-none shadow-none" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Hora</span>
-                  <input required type="time" value={formSugestao.hora} onChange={ev => setFormSugestao({...formSugestao, hora: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold outline-none shadow-none" />
-                </div>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Encarregado</span>
-                <input type="text" value={formSugestao.encarregado} onChange={ev => setFormSugestao({...formSugestao, encarregado: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold uppercase outline-none shadow-none" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Observações</span>
-                <textarea rows="2" value={formSugestao.observacao} onChange={ev => setFormSugestao({...formSugestao, observacao: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold outline-none resize-none uppercase shadow-none" placeholder="Opcional" />
-              </div>
-              <button disabled={enviando} type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest flex justify-center items-center gap-2 active:scale-95 shadow-xl transition-all mt-4">
-                <Send size={16}/> {isMaster ? 'Salvar no Banco' : 'Enviar Sugestão'}
-              </button>
-            </form>
           </div>
         </div>, document.body
       )}

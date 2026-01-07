@@ -1,16 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, Clock, MapPin, Star, ChevronRight, Navigation, User, X } from 'lucide-react';
+import { Calendar, Clock, MapPin, Star, ChevronRight, Navigation, User, X, BarChart3 } from 'lucide-react';
 
 // Importação das constantes e funções de precisão geográfica
 import { CIDADES_LISTA } from '../constants/cidades';
-import { buscarCoordenadas } from '../constants/comuns';
+import { buscarCoordenadas, normalizarTexto } from '../constants/comuns';
 
-const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, cidadeUsuario, user }) => {
+const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, aoAbrirDashboard, cidadeUsuario, user, pendenciasCount }) => {
   const [mapaSeletor, setMapaSeletor] = useState(null);
-
-  // Normalização para garantir destaque correto (Várzea/Varzea, Paulista/Pta)
-  const normalizar = (t) => t ? t.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\bPAULISTA\b|\bPTA\b/g, "").replace(/\s+/g, "").trim() : "";
 
   // 1. Lógica para identificar a Ocorrência da Semana (1ª a Últ)
   const getFiltroPrecisoHoje = () => {
@@ -19,7 +16,12 @@ const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, cidadeUsuario, use
     const dias = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
     const diaSemana = dias[hoje.getDay()];
     const numeroSemana = Math.ceil(diaMes / 7);
-    const semanaTexto = numeroSemana >= 5 ? "Últ." : `${numeroSemana}ª`;
+    
+    // Regra gramatical: Sábado e Domingo usam sufixo masculino (º)
+    const isFimDeSemana = diaSemana === "Dom" || diaSemana === "Sáb";
+    const sufixo = isFimDeSemana ? "º" : "ª";
+    
+    const semanaTexto = numeroSemana >= 5 ? "Últ." : `${numeroSemana}${sufixo}`;
     return `${semanaTexto} ${diaSemana}`;
   };
 
@@ -69,14 +71,27 @@ const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, cidadeUsuario, use
   return (
     <div className="w-full space-y-5 animate-in px-6 py-2 text-left">
       
-      {/* CARD DE BOAS-VINDAS */}
+      {/* CARD DE BOAS-VINDAS COM ATALHO PARA DASHBOARD */}
       {user && (
-        <div className="bg-white border border-slate-200 p-5 rounded-[2rem] flex items-center gap-4 shadow-sm">
-          <div className="bg-slate-950 p-2.5 rounded-2xl text-white shadow-lg"><User size={18} /></div>
-          <div className="flex flex-col">
-            <span className="text-[11px] font-[900] uppercase text-slate-950 tracking-tight leading-none">Olá, {user.nome?.split(' ')[0]}</span>
-            <span className="text-[8px] font-bold uppercase text-slate-400 tracking-widest mt-1.5">{user.cargo} • {user.cidade}</span>
+        <div className="bg-white border border-slate-200 p-5 rounded-[2rem] flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="bg-slate-950 p-2.5 rounded-2xl text-white shadow-lg"><User size={18} /></div>
+            <div className="flex flex-col">
+              <span className="text-[11px] font-[900] uppercase text-slate-950 tracking-tight leading-none">Olá, {user.nome?.split(' ')[0]}</span>
+              <span className="text-[8px] font-bold uppercase text-slate-400 tracking-widest mt-1.5">{user.cargo} • {user.cidade}</span>
+            </div>
           </div>
+          
+          {/* BOTÃO DASHBOARD */}
+          <button 
+            onClick={aoAbrirDashboard}
+            className="relative p-3 bg-slate-50 text-slate-400 rounded-2xl active:scale-90 transition-all border border-slate-100 hover:text-slate-950"
+          >
+            <BarChart3 size={20} />
+            {pendenciasCount > 0 && user?.nivel === 'master' && (
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full border-2 border-white animate-pulse"></span>
+            )}
+          </button>
         </div>
       )}
 
@@ -127,7 +142,7 @@ const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, cidadeUsuario, use
             </div>
           ) : (
             sugestoesVisiveis.map(s => {
-              const isDaMinhaCidade = normalizar(s.cidade) === normalizar(cidadeUsuario);
+              const isDaMinhaCidade = normalizarTexto(s.cidade) === normalizarTexto(cidadeUsuario);
               return (
                 <div key={s.id} className={`bg-white px-5 py-4 rounded-[1.8rem] border flex items-center justify-between shadow-sm transition-all ${isDaMinhaCidade ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200'}`}>
                   <div className="flex flex-col text-left">

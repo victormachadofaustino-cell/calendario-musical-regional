@@ -6,8 +6,8 @@ import {
   sendEmailVerification,
   signOut 
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { X, Mail, Lock, User, MapPin, Briefcase, Loader2 } from 'lucide-react';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { X, Mail, Lock, User, MapPin, Briefcase, Loader2, AlertCircle } from 'lucide-react';
 
 // Importação das constantes centralizadas
 import { CIDADES_LISTA, CARGOS_LISTA } from '../constants/cidades';
@@ -20,19 +20,34 @@ const Login = ({ aoFechar }) => {
   const [cidade, setCidade] = useState('Jundiaí');
   const [cargo, setCargo] = useState('Secretário da Música Cidade');
   const [loading, setLoading] = useState(false);
+  const [erroInterno, setErroInterno] = useState('');
+
+  const traduzirErro = (code) => {
+    switch (code) {
+      case 'auth/email-already-in-use': return 'Este e-mail já está cadastrado.';
+      case 'auth/weak-password': return 'A senha deve ter pelo menos 6 caracteres.';
+      case 'auth/invalid-email': return 'Formato de e-mail inválido.';
+      case 'auth/user-not-found': return 'Usuário não encontrado.';
+      case 'auth/wrong-password': return 'Senha incorreta.';
+      case 'auth/too-many-requests': return 'Muitas tentativas. Tente mais tarde.';
+      default: return 'Falha na operação. Tente novamente.';
+    }
+  };
 
   const lidarComAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setErroInterno('');
 
     try {
       if (modo === 'cadastro') {
+        // 1. Cria a conta no Auth
         const cred = await createUserWithEmailAndPassword(auth, email, senha);
-        await sendEmailVerification(cred.user);
 
-        // BLINDAGEM: Nível 'master' só é concedido se o e-mail for exatamente o seu.
+        // 2. Define se é o Master Principal
         const ehMaster = email.toLowerCase().trim() === "victormachadofaustino@gmail.com";
 
+        // 3. Salva no Banco ANTES de qualquer outra ação para garantir persistência
         await setDoc(doc(db, "usuarios", cred.user.uid), {
           uid: cred.user.uid,
           nome, 
@@ -42,35 +57,36 @@ const Login = ({ aoFechar }) => {
           nivel: ehMaster ? "master" : "editor",
           status: ehMaster ? "aprovado" : "pendente",
           ativo: true,
-          dataCriacao: new Date()
+          dataCriacao: serverTimestamp() // Usa a hora oficial do servidor
         });
 
-        alert("Solicitação enviada! Verifique seu e-mail para validar a conta e aguarde a aprovação do Master.");
+        // 4. Envia verificação e encerra sessão para aguardar aprovação
+        await sendEmailVerification(cred.user);
+        
+        alert("Solicitação enviada com sucesso!\n\n1. Verifique seu e-mail (e a pasta de SPAM).\n2. Valide sua conta pelo link enviado.\n3. Aguarde a aprovação do Master.");
+        
         await signOut(auth);
         aoFechar();
       } else {
+        // Lógica de Login
         const cred = await signInWithEmailAndPassword(auth, email, senha);
         const docSnap = await getDoc(doc(db, "usuarios", cred.user.uid));
         
         if (docSnap.exists()) {
           const dados = docSnap.data();
           
-          // TRAVA DE SEGURANÇA: Bloqueia acesso se não estiver aprovado
           if (dados.status !== "aprovado" || !dados.ativo) {
-            alert("Sua conta está aguardando aprovação ou foi inativada pelo Master.");
+            alert("Acesso restrito: Sua conta está aguardando aprovação ou foi inativada pelo Master.");
             await signOut(auth);
             setLoading(false);
             return;
           }
-
-          // CORREÇÃO: O App.jsx já gerencia o login via onAuthStateChanged.
-          // Apenas fechamos o modal para liberar a tela.
           aoFechar();
         }
       }
     } catch (error) {
       console.error("Erro na autenticação:", error);
-      alert("Falha: " + error.message);
+      setErroInterno(traduzirErro(error.code));
     } finally {
       setLoading(false);
     }
@@ -91,6 +107,13 @@ const Login = ({ aoFechar }) => {
             {modo === 'login' ? 'Área restrita a colaboradores' : 'Cadastre-se para análise do Master'}
           </p>
         </div>
+
+        {erroInterno && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 animate-in shake">
+            <AlertCircle size={18} />
+            <span className="text-[10px] font-black uppercase tracking-tight">{erroInterno}</span>
+          </div>
+        )}
 
         <form onSubmit={lidarComAuth} className="space-y-4">
           {modo === 'cadastro' && (
@@ -133,7 +156,7 @@ const Login = ({ aoFechar }) => {
           </button>
         </form>
 
-        <button onClick={() => setModo(modo === 'login' ? 'cadastro' : 'login')} className="w-full text-center mt-6 text-slate-400 text-[9px] font-black uppercase tracking-widest hover:text-slate-950 transition-colors">
+        <button onClick={() => { setModo(modo === 'login' ? 'cadastro' : 'login'); setErroInterno(''); }} className="w-full text-center mt-6 text-slate-400 text-[9px] font-black uppercase tracking-widest hover:text-slate-950 transition-colors">
           {modo === 'login' ? 'Não tem conta? Solicite Acesso' : 'Já possui cadastro? Faça Login'}
         </button>
       </div>

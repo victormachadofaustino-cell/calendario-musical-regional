@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { db, auth } from '../firebaseConfig';
+import { db } from '../firebaseConfig';
 import { collection, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { Search, Phone, MessageCircle, X, Plus, Trash2, Edit3, Send } from 'lucide-react';
 import Feedback from './Feedback';
 
-// Importação da constante centralizada
+// Importação das constantes e funções centralizadas
 import { CIDADES_LISTA } from '../constants/cidades';
+import { normalizarTexto } from '../constants/comuns';
 
 const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => {
   const [aba, setAba] = useState('regionais');
@@ -20,31 +21,17 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => {
   const [enviando, setEnviando] = useState(false);
 
   const isMaster = user?.nivel === 'master';
-
-  // Normalização para comparar Paulista/Pta e Acentos
-  const normalizarParaComparacao = (texto) => {
-    if (!texto) return "";
-    return texto
-      .toUpperCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "") 
-      .replace(/\bPAULISTA\b/g, "")    
-      .replace(/\bPTA\b/g, "")         
-      .replace(/\s+/g, "")             
-      .trim();
-  };
-
-  // Trava de segurança por cidade
-  const podeSugerirContato = (item) => {
-    if (isMaster) return true;
-    const cidadeUser = normalizarParaComparacao(user?.cidade);
-    const cidadeContato = normalizarParaComparacao(item.city || item.cidade);
-    return cidadeUser !== "" && cidadeContato !== "" && (cidadeUser.includes(cidadeContato) || cidadeContato.includes(cidadeUser));
-  };
-
   const COLEC_REGIONAIS = "encarregados_regionais"; 
   const COLEC_EXAMINADORAS = "examinadoras";
   const listaAtual = aba === 'regionais' ? encarregados : examinadoras;
+
+  // Trava de segurança por cidade (Utilizando normalização centralizada)
+  const podeSugerirContato = (item) => {
+    if (isMaster) return true;
+    const cidadeUser = normalizarTexto(user?.cidade);
+    const cidadeContato = normalizarTexto(item.city || item.cidade);
+    return cidadeUser !== "" && cidadeContato !== "" && (cidadeUser.includes(cidadeContato) || cidadeContato.includes(cidadeUser));
+  };
 
   const [formMembro, setFormMembro] = useState({ name: '', city: 'Jundiaí', contact: '' });
 
@@ -69,7 +56,6 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => {
       const nomeColecao = aba === 'regionais' ? COLEC_REGIONAIS : COLEC_EXAMINADORAS;
       const dadosUpdate = editandoMembro || sugestaoAberta;
       
-      // Garantimos que a cidade seja salva no campo correto que o banco espera (city)
       const payload = {
         name: dadosUpdate.name,
         city: dadosUpdate.city,
@@ -103,12 +89,21 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => {
     finally { setEnviando(false); }
   };
 
+  const handleExcluirDefinitivo = async () => {
+    try {
+      const nomeColecao = aba === 'regionais' ? COLEC_REGIONAIS : COLEC_EXAMINADORAS;
+      await deleteDoc(doc(db, nomeColecao, confirmaExclusao.id));
+      setFeedback({ msg: "Membro removido!", tipo: 'sucesso' });
+      setConfirmaExclusao(null);
+    } catch (err) { setFeedback({ msg: "Erro ao excluir", tipo: 'erro' }); }
+  };
+
   const filtrados = useMemo(() => {
     return listaAtual.filter(item => {
       const nomeMembro = item.name || "";
       const cidadeMembro = item.city || item.cidade || "";
-      const matchBusca = normalizarParaComparacao(nomeMembro).includes(normalizarParaComparacao(busca));
-      const matchCidade = filtroCidade === 'Todas' || normalizarParaComparacao(cidadeMembro) === normalizarParaComparacao(filtroCidade);
+      const matchBusca = normalizarTexto(nomeMembro).includes(normalizarTexto(busca));
+      const matchCidade = filtroCidade === 'Todas' || normalizarTexto(cidadeMembro) === normalizarTexto(filtroCidade);
       return matchBusca && matchCidade;
     }).sort((a, b) => (a.city || a.cidade || "").localeCompare(b.city || b.cidade || "") || (a.name || "").localeCompare(b.name || ""));
   }, [listaAtual, busca, filtroCidade]);
@@ -233,6 +228,7 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => {
         </div>, document.body
       )}
 
+      {/* MODAL CONFIRMA EXCLUSÃO */}
       {confirmaExclusao && createPortal(
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
           <div className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 text-center animate-in zoom-in-95 shadow-2xl">

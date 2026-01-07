@@ -1,26 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db, auth } from '../firebaseConfig';
 import { 
   collection, query, where, onSnapshot, doc, 
-  updateDoc, deleteDoc, writeBatch, getDocs, setDoc, addDoc 
+  updateDoc, deleteDoc, writeBatch, getDocs, setDoc, addDoc,
+  orderBy, limit
 } from 'firebase/firestore';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { 
   Check, X, Database, RefreshCw, ShieldCheck, ShieldAlert,
-  MapPin, Users, Info, Table as TableIcon, Link, Settings, Edit3, Save, Mail, AlertCircle, User, Lock, Unlock, Briefcase, FileText, Trash2, ArrowRight, Shield, TrendingDown, Clock
+  MapPin, Users, Info, Edit3, Save, Mail, AlertCircle, User, Lock, Briefcase, Trash2, ArrowRight, Shield, TrendingDown, Clock, Activity, Trophy
 } from 'lucide-react';
 import Feedback from './Feedback';
 import { createPortal } from 'react-dom';
 
-import { CIDADES_LISTA } from '../constants/cidades';
-import { EXAMINADORAS } from '../data/migrarExaminadoras';
-import { REGIONAIS as ENCARREGADOS_LISTA } from '../data/migrarRegionaisContatos';
-import { NOVOS_REGIONAIS_DATA } from '../data/migrarRegionais';
+// Importações de Constantes e Utilitários
+import { CIDADES_LISTA, CARGOS_LISTA } from '../constants/cidades';
+
+// Importações da estrutura de backup (subindo dois níveis para sair de src)
+import { EXAMINADORAS } from '../../migracao_backup/data/migrarExaminadoras';
+import { REGIONAIS as ENCARREGADOS_LISTA } from '../../migracao_backup/data/migrarRegionaisContatos';
+import { NOVOS_REGIONAIS_DATA } from '../../migracao_backup/data/migrarRegionais';
 
 const PainelMaster = ({ aoFechar, userLogado }) => {
   const [usuariosPendentes, setUsuariosPendentes] = useState([]);
   const [sugestoesAlteracao, setSugestoesAlteracao] = useState([]);
   const [todosUsuarios, setTodosUsuarios] = useState([]);
+  const [rankingAtividade, setRankingAtividade] = useState([]);
   const [aba, setAba] = useState(userLogado?.nivel === 'master' ? 'pendentes' : 'perfil');
   const [feedback, setFeedback] = useState(null);
   const [loadingModulos, setLoadingModulos] = useState({});
@@ -36,36 +41,44 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
   const [novaCidade, setNovaCidade] = useState('');
 
   const isMaster = userLogado?.nivel === 'master';
-  const CARGOS_OPCOES = ["Ancião", "Encarregado Regional", "Examinadora", "Secretário da Música da Regional", "Secretário da Música da Cidade"];
 
   useEffect(() => {
-    if (!userLogado) return;
+    if (!userLogado || !isMaster) return;
 
-    let unsubP, unsubS, unsubC;
+    let unsubP, unsubS, unsubC, unsubR;
 
-    if (isMaster) {
-      // Listener de Usuários (Pendentes e Aprovados)
-      unsubP = onSnapshot(collection(db, "usuarios"), (snap) => {
-        const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setUsuariosPendentes(lista.filter(u => u.status === 'pendente'));
-        setTodosUsuarios(lista.filter(u => u.status !== 'pendente'));
-      }, (err) => console.error("Erro Usuários:", err));
+    // 1. Listener de Usuários (Aguardando Aprovação e Ativos)
+    unsubP = onSnapshot(collection(db, "usuarios"), (snap) => {
+      const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setUsuariosPendentes(lista.filter(u => u.status === 'pendente'));
+      setTodosUsuarios(lista.filter(u => u.status !== 'pendente'));
+    }, (err) => console.error("Erro Usuários:", err));
 
-      // Listener de Sugestões (Alterações de Ensaios)
-      unsubS = onSnapshot(collection(db, "sugestoes_pendentes"), (snap) => {
-        setSugestoesAlteracao(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      }, (err) => console.error("Erro Sugestões:", err));
+    // 2. Listener de Sugestões Pendentes
+    unsubS = onSnapshot(collection(db, "sugestoes_pendentes"), (snap) => {
+      setSugestoesAlteracao(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (err) => console.error("Erro Sugestões:", err));
 
-      // Listener Configurações
-      unsubC = onSnapshot(doc(db, "configuracoes", "lista_oficial"), (snap) => {
-        if (snap.exists()) setConfigLista(snap.data());
-      });
-    }
+    // 3. Listener de Histórico de Auditoria (Ranking)
+    const qRanking = query(
+      collection(db, "sugestoes_aprovadas_historico"), 
+      orderBy("dataProcessamento", "desc"),
+      limit(20)
+    );
+    unsubR = onSnapshot(qRanking, (snap) => {
+      setRankingAtividade(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    // 4. Listener Configurações da Lista Oficial
+    unsubC = onSnapshot(doc(db, "configuracoes", "lista_oficial"), (snap) => {
+      if (snap.exists()) setConfigLista(snap.data());
+    });
 
     return () => { 
       if (unsubP) unsubP(); 
       if (unsubS) unsubS(); 
       if (unsubC) unsubC(); 
+      if (unsubR) unsubR();
     };
   }, [isMaster, userLogado]);
 
@@ -101,6 +114,13 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
         else if (sug.tipo === 'contato_examinadora') colecao = "examinadoras";
 
         await updateDoc(doc(db, colecao, sug.ensaioId), sug.dadosSugeridos);
+        
+        await addDoc(collection(db, "sugestoes_aprovadas_historico"), {
+          ...sug,
+          dataProcessamento: new Date(),
+          processadoPor: userLogado.nome
+        });
+
         dispararFeedback("Alteração aplicada!", 'sucesso');
       }
       await deleteDoc(doc(db, "sugestoes_pendentes", sug.id));
@@ -151,6 +171,17 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
     finally { setLoadingModulos(prev => ({ ...prev, [tipo]: false })); }
   };
 
+  const rankingAgrupado = useMemo(() => {
+    const counts = {};
+    rankingAtividade.forEach(item => {
+      const nome = item.solicitanteNome || "Sistema";
+      counts[nome] = (counts[nome] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([nome, qtd]) => ({ nome, qtd }))
+      .sort((a, b) => b.qtd - a.qtd);
+  }, [rankingAtividade]);
+
   const CompararCampo = ({ label, antigo, novo }) => {
     const mudou = String(antigo || '').trim() !== String(novo || '').trim();
     if (!antigo && !novo) return null;
@@ -189,7 +220,7 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
               <>
                 <button onClick={() => setAba('pendentes')} className={`flex-shrink-0 px-4 py-3 rounded-xl text-[8px] font-black uppercase transition-all ${aba === 'pendentes' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Pendências ({usuariosPendentes.length + sugestoesAlteracao.length})</button>
                 <button onClick={() => setAba('usuarios')} className={`flex-shrink-0 px-4 py-3 rounded-xl text-[8px] font-black uppercase transition-all ${aba === 'usuarios' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Usuários ({todosUsuarios.length})</button>
-                <button onClick={() => setAba('lista')} className={`flex-shrink-0 px-4 py-3 rounded-xl text-[8px] font-black uppercase transition-all ${aba === 'lista' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Lista Oficial</button>
+                <button onClick={() => setAba('auditoria')} className={`flex-shrink-0 px-4 py-3 rounded-xl text-[8px] font-black uppercase transition-all ${aba === 'auditoria' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Atividade</button>
                 <button onClick={() => setAba('config')} className={`flex-shrink-0 px-4 py-3 rounded-xl text-[8px] font-black uppercase transition-all ${aba === 'config' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Manutenção</button>
               </>
             )}
@@ -216,18 +247,12 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
                   <div className="flex flex-col gap-1 text-left">
                     <span className="text-[8px] font-black uppercase text-slate-400 ml-2">Cargo Musical</span>
                     <select required value={meuCargo} onChange={e => setMeuCargo(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none">
-                      {CARGOS_OPCOES.map(c => <option key={c} value={c}>{c}</option>)}
+                      {CARGOS_LISTA.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                 </div>
                 <button type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 active:scale-95 shadow-lg"><Save size={16}/> Salvar Alterações</button>
               </form>
-
-              <div className="bg-amber-50 p-6 rounded-[2.5rem] border border-amber-100 space-y-3">
-                <div className="flex items-center gap-3"><div className="p-3 bg-amber-500 text-white rounded-2xl"><Lock size={20}/></div><h4 className="text-[11px] font-black uppercase text-amber-700 italic">Segurança</h4></div>
-                <p className="text-[8px] font-bold text-amber-600/80 uppercase leading-relaxed text-left">Deseja alterar sua senha de acesso? Enviaremos um link de redefinição para: <br/><span className="text-amber-900 font-black">{userLogado?.email}</span></p>
-                <button onClick={async () => { try { await sendPasswordResetEmail(auth, userLogado.email); dispararFeedback("E-mail de redefinição enviado!", "sucesso"); } catch(e){ dispararFeedback("Erro ao enviar e-mail", "erro"); } }} className="w-full bg-amber-500 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 shadow-md active:scale-95"><Mail size={16}/> Redefinir Minha Senha</button>
-              </div>
             </div>
           )}
 
@@ -240,8 +265,8 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
                     <div key={u.id} className="bg-white p-5 rounded-[2.2rem] shadow-sm border border-slate-100 flex justify-between items-center transition-all">
                       <div className="flex flex-col text-left"><h4 className="text-[11px] font-black uppercase text-slate-950 italic">{u.nome}</h4><p className="text-[8px] font-bold text-slate-400 uppercase mt-1">{u.cargo} • {u.cidade}</p></div>
                       <div className="flex gap-2">
-                        <button onClick={() => gerenciarUsuario(u.id, { status: 'aprovado', ativo: true })} className="bg-green-500 text-white p-3 rounded-xl shadow-md active:scale-90"><Check size={16}/></button>
-                        <button onClick={async () => await deleteDoc(doc(db, "usuarios", u.id))} className="bg-red-50 text-red-500 p-3 rounded-xl active:scale-90"><Trash2 size={16}/></button>
+                        <button onClick={() => gerenciarUsuario(u.id, { status: 'aprovado', ativo: true })} className="bg-green-500 text-white p-3 rounded-xl shadow-md active:scale-90 transition-all"><Check size={16}/></button>
+                        <button onClick={async () => await deleteDoc(doc(db, "usuarios", u.id))} className="bg-red-50 text-red-500 p-3 rounded-xl active:scale-90 transition-all"><Trash2 size={16}/></button>
                       </div>
                     </div>
                   ))}
@@ -259,17 +284,13 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
                           <p className="text-[8px] font-bold text-slate-400 uppercase mt-1.5 flex items-center gap-1"><User size={10}/> Enviado por: {s.solicitanteNome}</p>
                         </div>
                         <div className="flex gap-2">
-                          <button onClick={() => processarSugestao(s, true)} className="bg-green-500 text-white p-3 rounded-xl shadow-md active:scale-90"><Check size={18}/></button>
-                          <button onClick={() => processarSugestao(s, false)} className="bg-slate-100 text-slate-400 p-3 rounded-xl active:scale-90"><X size={18}/></button>
+                          <button onClick={() => processarSugestao(s, true)} className="bg-green-500 text-white p-3 rounded-xl shadow-md active:scale-90 transition-all"><Check size={18}/></button>
+                          <button onClick={() => processarSugestao(s, false)} className="bg-slate-100 text-slate-400 p-3 rounded-xl active:scale-90 transition-all"><X size={18}/></button>
                         </div>
                       </div>
-
                       <div className="grid grid-cols-1 gap-2 mt-2">
                         <CompararCampo label="Localidade / Nome" antigo={s.dadosAntigos?.localidade || s.dadosAntigos?.name} novo={s.dadosSugeridos?.localidade || s.dadosSugeridos?.name} />
                         <CompararCampo label="Dia / Contato" antigo={s.dadosAntigos?.dia || s.dadosAntigos?.contact} novo={s.dadosSugeridos?.dia || s.dadosSugeridos?.contact} />
-                        <CompararCampo label="Hora / Cidade" antigo={s.dadosAntigos?.hora || s.dadosAntigos?.city} novo={s.dadosSugeridos?.hora || s.dadosSugeridos?.city} />
-                        <CompararCampo label="Encarregado" antigo={s.dadosAntigos?.encarregado} novo={s.dadosSugeridos?.encarregado} />
-                        <CompararCampo label="Observação" antigo={s.dadosAntigos?.observacao} novo={s.dadosSugeridos?.observacao} />
                       </div>
                     </div>
                   ))}
@@ -291,12 +312,12 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
                     </div>
                     <div className="flex gap-1.5 shrink-0">
                       {u.nivel === 'master' ? (
-                        <button onClick={() => gerenciarUsuario(u.id, { nivel: 'comum' })} className="p-3 bg-amber-100 text-amber-600 rounded-xl active:scale-90" title="Rebaixar"><TrendingDown size={14}/></button>
+                        <button onClick={() => gerenciarUsuario(u.id, { nivel: 'comum' })} className="p-3 bg-amber-100 text-amber-600 rounded-xl active:scale-90 transition-all" title="Rebaixar"><TrendingDown size={14}/></button>
                       ) : (
-                        <button onClick={() => gerenciarUsuario(u.id, { nivel: 'master' })} className="p-3 bg-amber-500 text-white rounded-xl active:scale-90 shadow-md" title="Promover"><Shield size={14}/></button>
+                        <button onClick={() => gerenciarUsuario(u.id, { nivel: 'master' })} className="p-3 bg-amber-500 text-white rounded-xl active:scale-90 shadow-md transition-all" title="Promover"><Shield size={14}/></button>
                       )}
-                      <button onClick={() => { setEditandoUser(u); setNovoCargo(u.cargo); setNovaCidade(u.cidade); }} className="p-3 bg-slate-50 text-slate-500 rounded-xl active:scale-90"><Edit3 size={14}/></button>
-                      <button onClick={() => gerenciarUsuario(u.id, { ativo: !u.ativo })} className={`p-3 rounded-xl active:scale-90 ${u.ativo ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                      <button onClick={() => { setEditandoUser(u); setNovoCargo(u.cargo); setNovaCidade(u.cidade); }} className="p-3 bg-slate-50 text-slate-500 rounded-xl active:scale-90 transition-all"><Edit3 size={14}/></button>
+                      <button onClick={() => gerenciarUsuario(u.id, { ativo: !u.ativo })} className={`p-3 rounded-xl active:scale-90 transition-all ${u.ativo ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
                         {u.ativo ? <ShieldCheck size={14}/> : <ShieldAlert size={14}/>}
                       </button>
                     </div>
@@ -306,40 +327,39 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
             </div>
           )}
 
-          {isMaster && aba === 'lista' && (
-            <div className="animate-in">
-              <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
-                <div className="p-8 space-y-6">
-                  <div className="flex items-center gap-4">
-                    <div className="p-4 bg-blue-600 text-white rounded-3xl shadow-lg shadow-blue-200"><Link size={24}/></div>
-                    <div className="flex flex-col text-left">
-                      <h4 className="text-base font-[900] uppercase text-slate-950 italic leading-none">Arquivo Oficial</h4>
-                      <p className="text-[8px] font-bold text-slate-400 uppercase mt-2 tracking-widest">Link do PDF na Nuvem</p>
-                    </div>
-                  </div>
-                  
-                  <form onSubmit={atualizarListaOficial} className="space-y-4 pt-2 text-left">
-                    <div className="group">
-                      <label className="text-[7px] font-black uppercase text-slate-400 ml-4 mb-1 block group-focus-within:text-blue-600 transition-colors">URL do Documento</label>
-                      <input required type="url" placeholder="https://..." value={configLista.url} onChange={e => setConfigLista({...configLista, url: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-5 text-[11px] font-bold outline-none focus:border-blue-500 focus:bg-white transition-all shadow-inner" />
-                    </div>
-                    <div className="group">
-                      <label className="text-[7px] font-black uppercase text-slate-400 ml-4 mb-1 block group-focus-within:text-blue-600 transition-colors">Mês de Referência</label>
-                      <div className="relative">
-                        <Clock size={14} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" />
-                        <input required type="text" placeholder="Ex: Janeiro 2026" value={configLista.dataReferencia} onChange={e => setConfigLista({...configLista, dataReferencia: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 pl-12 pr-5 text-[11px] font-bold outline-none uppercase focus:border-blue-500 focus:bg-white transition-all shadow-inner" />
+          {isMaster && aba === 'auditoria' && (
+            <div className="space-y-6 animate-in">
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-black uppercase text-amber-600 ml-2 tracking-widest italic flex items-center gap-2"><Trophy size={14}/> Ranking de Zelo</h4>
+                <div className="bg-white rounded-[2.2rem] border border-slate-100 shadow-sm overflow-hidden divide-y divide-slate-50">
+                  {rankingAgrupado.length === 0 ? <p className="p-8 text-[9px] text-slate-300 uppercase font-bold italic text-center">Nenhuma atividade registrada.</p> :
+                    rankingAgrupado.map((rank, i) => (
+                      <div key={rank.nome} className="p-5 flex justify-between items-center bg-white">
+                        <div className="flex items-center gap-4">
+                          <span className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-[11px] ${i === 0 ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}>{i + 1}º</span>
+                          <span className="text-[11px] font-black uppercase text-slate-950 italic">{rank.nome}</span>
+                        </div>
+                        <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100">
+                          <span className="text-[10px] font-black text-slate-950">{rank.qtd}</span>
+                          <span className="text-[7px] font-black text-slate-400 uppercase">Sugestões</span>
+                        </div>
                       </div>
-                    </div>
-                    <button type="submit" className="w-full bg-slate-950 text-white py-5 rounded-[1.8rem] font-[900] uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 mt-4 group">
-                      <Save size={18} className="group-hover:rotate-12 transition-transform" /> Publicar Nova Lista
-                    </button>
-                    {configLista.atualizacao && (
-                      <div className="flex items-center justify-center gap-2 pt-2 opacity-40">
-                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                        <span className="text-[7px] font-black text-slate-500 uppercase italic text-center">Sincronizado: {configLista.atualizacao}</span>
+                    ))}
+                </div>
+              </div>
+              
+              <div className="space-y-3 pt-4 border-t border-slate-200">
+                <h4 className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest italic flex items-center gap-2"><Activity size={14}/> Histórico Recente</h4>
+                <div className="space-y-2">
+                  {rankingAtividade.map(log => (
+                    <div key={log.id} className="bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between shadow-sm">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] font-black uppercase text-slate-950 italic">{log.localidade || log.cidade}</span>
+                        <span className="text-[7px] font-bold text-slate-400 uppercase">Aprovado por: {log.processadoPor}</span>
                       </div>
-                    )}
-                  </form>
+                      <span className="text-[8px] font-black text-slate-400 uppercase italic">{log.dataProcessamento?.toDate().toLocaleDateString('pt-BR')}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -355,27 +375,17 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
                 </p>
               </div>
               
-              <button onClick={() => setConfirma('regionais')} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4 active:scale-95 text-left">
+              <button onClick={() => setConfirma('regionais')} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4 active:scale-95 transition-all text-left">
                 <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg"><MapPin size={20}/></div>
                 <div className="flex-grow"><h4 className="text-[10px] font-black uppercase text-slate-950 italic">Agenda Regionais</h4><p className="text-[7px] font-bold text-slate-400 uppercase tracking-tighter">Limpa e restaura agenda 2026</p></div>
                 <RefreshCw size={14} className={loadingModulos.regionais ? "animate-spin text-blue-600" : "text-slate-300"} />
               </button>
-              <button onClick={() => setConfirma('comissao')} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4 active:scale-95 text-left">
+              <button onClick={() => setConfirma('comissao')} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4 active:scale-95 transition-all text-left">
                 <div className="p-3 bg-purple-600 text-white rounded-2xl shadow-lg"><Users size={20}/></div>
                 <div className="flex-grow"><h4 className="text-[10px] font-black uppercase text-slate-950 italic">Contatos Comissão</h4><p className="text-[7px] font-bold text-slate-400 uppercase tracking-tighter">Restaura Examinadoras e Regionais</p></div>
                 <RefreshCw size={14} className={loadingModulos.comissao ? "animate-spin text-purple-600" : "text-slate-300"} />
               </button>
-              <button onClick={() => setConfirma('locais')} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4 active:scale-95 text-left">
-                <div className="p-3 bg-emerald-600 text-white rounded-2xl shadow-lg"><TableIcon size={20}/></div>
-                <div className="flex-grow"><h4 className="text-[10px] font-black uppercase text-slate-950 italic">Ensaios Locais</h4><p className="text-[7px] font-bold text-slate-400 uppercase tracking-tighter">Limpa e restaura 168 comuns</p></div>
-                <RefreshCw size={14} className={loadingModulos.locais ? "animate-spin text-emerald-600" : "text-slate-300"} />
-              </button>
-              <button onClick={() => setConfirma('avisos')} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4 active:scale-95 text-left">
-                <div className="p-3 bg-amber-600 text-white rounded-2xl shadow-lg"><Info size={20}/></div>
-                <div className="flex-grow"><h4 className="text-[10px] font-black uppercase text-slate-950 italic">Avisos e Permissões</h4><p className="text-[7px] font-bold text-slate-400 uppercase tracking-tighter">Limpa tabela de notas oficiais</p></div>
-                <RefreshCw size={14} className={loadingModulos.avisos ? "animate-spin text-amber-600" : "text-slate-300"} />
-              </button>
-              <button onClick={() => setConfirma('tudo')} className="mt-4 bg-slate-950 p-6 rounded-[2.2rem] shadow-xl flex items-center gap-4 active:scale-95 text-left">
+              <button onClick={() => setConfirma('tudo')} className="mt-4 bg-slate-950 p-6 rounded-[2.2rem] shadow-xl flex items-center gap-4 active:scale-95 transition-all text-left">
                 <div className="p-3 bg-white/10 text-white rounded-2xl"><Database size={20}/></div>
                 <div className="flex-grow"><h4 className="text-[11px] font-black uppercase text-white italic">Hard Reset Total</h4><p className="text-[7px] font-bold text-white/40 uppercase tracking-widest text-left">Restaura todo o banco de dados</p></div>
                 <RefreshCw size={16} className={loadingModulos.tudo ? "animate-spin text-white" : "text-white/20"} />
@@ -387,7 +397,7 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
 
       {editandoUser && createPortal(
         <div className="fixed inset-0 z-[1600] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md text-left">
-          <div className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95">
+          <div className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 transition-all">
             <h3 className="text-xl font-[900] uppercase italic text-slate-950 mb-1 leading-none">Editar Usuário</h3>
             <p className="text-[9px] font-bold text-slate-400 uppercase mb-6">{editandoUser.nome}</p>
             <div className="space-y-4">
@@ -398,7 +408,7 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
               </div>
               <div className="flex flex-col gap-1"><span className="text-[8px] font-black uppercase text-slate-400 ml-2">Cargo</span>
                 <select value={novoCargo} onChange={(e) => setNovoCargo(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold uppercase outline-none">
-                  {CARGOS_OPCOES.map(cargo => <option key={cargo} value={cargo}>{cargo}</option>)}
+                  {CARGOS_LISTA.map(cargo => <option key={cargo} value={cargo}>{cargo}</option>)}
                 </select>
               </div>
               <button onClick={() => gerenciarUsuario(editandoUser.id, { cargo: novoCargo, cidade: novaCidade })} className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] active:scale-95 shadow-xl transition-all">Salvar</button>
@@ -410,14 +420,14 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
 
       {confirma && createPortal(
         <div className="fixed inset-0 z-[1600] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl text-center">
+          <div className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl text-center animate-in zoom-in-95 transition-all">
             <div className="bg-amber-100 text-amber-600 w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4"><AlertCircle size={24} /></div>
             <h3 className="text-lg font-[900] uppercase italic text-slate-950">Sincronizar?</h3>
             <p className="text-slate-400 text-[10px] font-bold uppercase mt-4 text-center leading-relaxed">Você resetará o módulo {confirma.toUpperCase()}.</p>
             <p className="text-red-500 text-[8px] font-black uppercase mt-2">DADOS ATUAIS SERÃO PERDIDOS.</p>
             <div className="flex flex-col gap-2 mt-8">
-              <button onClick={() => syncModulo(confirma)} className="w-full bg-slate-950 text-white py-5 rounded-2xl font-black uppercase text-[10px] active:scale-95">Sim, Confirmar</button>
-              <button onClick={() => setConfirma(null)} className="w-full bg-slate-100 text-slate-400 py-4 rounded-2xl font-black uppercase text-[10px]">Cancelar</button>
+              <button onClick={() => syncModulo(confirma)} className="w-full bg-slate-950 text-white py-5 rounded-2xl font-black uppercase text-[10px] active:scale-95 transition-all">Sim, Confirmar</button>
+              <button onClick={() => setConfirma(null)} className="w-full bg-slate-100 text-slate-400 py-4 rounded-2xl font-black uppercase text-[10px] transition-all">Cancelar</button>
             </div>
           </div>
         </div>, document.body

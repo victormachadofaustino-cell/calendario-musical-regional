@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { db, auth } from '../firebaseConfig';
+import { db } from '../firebaseConfig';
 import { collection, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { MapPin, Clock, Calendar, Star, Share2, Navigation, X, Edit3, Send, Plus, Trash2 } from 'lucide-react';
 import Feedback from './Feedback';
 
-// CORREÇÃO: Caminho corrigido para minúsculo
+// Importações centralizadas
 import { CIDADES_LISTA } from '../constants/cidades';
+import { normalizarTexto } from '../constants/comuns';
 
 const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => {
   const [filtroCidade, setFiltroCidade] = useState('Todas');
@@ -25,35 +26,20 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => {
 
   const isMaster = user?.nivel === 'master';
 
-  // FUNÇÃO DE NORMALIZAÇÃO TOTAL (Blindagem contra Paulista/Pta e Acentos)
-  const normalizarParaComparacao = (texto) => {
-    if (!texto) return "";
-    return texto
-      .toUpperCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "") 
-      .replace(/PAULISTA/g, "")       
-      .replace(/PTA/g, "")             
-      .replace(/\s+/g, "")             
-      .trim();
-  };
-
-  // TRAVA SIMPLIFICADA: Se a cidade do usuário bater com a sede do ensaio, ele edita.
+  // Trava de segurança baseada na sede (Normalizada)
   const podeEditarRegional = (e) => {
     if (isMaster) return true;
     if (!user?.cidade || !e.sede) return false;
-    return normalizarParaComparacao(user.cidade) === normalizarParaComparacao(e.sede);
+    return normalizarTexto(user.cidade) === normalizarTexto(e.sede);
   };
 
   const SEMANAS = ["1ª", "2ª", "3ª", "4ª", "Últ"];
-
   const mesesUnicos = ['Todos', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
   const abrirMapa = (app, local, sede) => {
-    const termoBusca = `CCB ${local} ${sede}`;
-    const termoEncoded = encodeURIComponent(termoBusca);
+    const termoEncoded = encodeURIComponent(`CCB ${local} ${sede}`);
     const links = { 
-      google: `https://www.google.com/maps/search/?api=1&query=${termoEncoded}`, 
+      google: `http://maps.google.com/?q=${termoEncoded}`, 
       waze: `https://waze.com/ul?q=${termoEncoded}&navigate=yes` 
     };
     window.open(links[app], '_blank');
@@ -61,7 +47,7 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => {
   };
 
   const compartilharWapp = (e) => {
-    const msg = `*Ensaio Regional CCB*\n📍 ${e.sede} (${e.local})\n📅 ${e.dia}/${e.mes} às ${e.hora}\n🗓️ ${e.weekday}\n\n🚙 Como Chegar: https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('CCB ' + e.local + ' ' + e.sede)}`;
+    const msg = `*Ensaio Regional CCB*\n📍 ${e.sede} (${e.local})\n📅 ${e.dia}/${e.mes} às ${e.hora}\n🗓️ ${e.weekday}`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
@@ -100,16 +86,26 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => {
 
   const regionaisFiltrados = useMemo(() => {
     const ordemMeses = { "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8, "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12 };
+    
     return ensaiosRegionais.filter(e => {
-      const pertenceARegional = CIDADES_LISTA.some(c => normalizarParaComparacao(c) === normalizarParaComparacao(e.sede));
+      // 1. Validar se a sede pertence à lista oficial da Regional
+      const sedeNormalizada = normalizarTexto(e.sede);
+      const pertenceARegional = CIDADES_LISTA.some(c => normalizarTexto(c) === sedeNormalizada);
       if (!pertenceARegional) return false;
-      const matchCidade = filtroCidade === 'Todas' || normalizarParaComparacao(e.sede) === normalizarParaComparacao(filtroCidade);
+
+      // 2. Filtro de Cidade
+      const matchCidade = filtroCidade === 'Todas' || sedeNormalizada === normalizarTexto(filtroCidade);
+      
+      // 3. Filtro de Mês
       const matchMes = filtroMes === 'Todos' || e.mes === filtroMes;
+      
+      // 4. Filtro de Semana (Resiliente a "1ª" ou "1")
       let matchSemana = true;
       if (semanaSelecionada) {
-        const termoBusca = semanaSelecionada.replace(/\D/g, "") || semanaSelecionada;
-        matchSemana = e.weekday && e.weekday.includes(termoBusca);
+        const termoBusca = semanaSelecionada.replace(/\D/g, "");
+        matchSemana = e.weekday && (e.weekday.includes(termoBusca) || e.weekday.includes(semanaSelecionada));
       }
+
       return matchCidade && matchMes && matchSemana;
     }).sort((a, b) => (ordemMeses[a.mes] - ordemMeses[b.mes]) || Number(a.dia) - Number(b.dia));
   }, [ensaiosRegionais, filtroCidade, filtroMes, semanaSelecionada]);

@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, doc, onSnapshot, where } from 'firebase/firestore';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth, db } from './firebaseConfig';
+import React, { useState, useRef } from 'react';
+import { signOut } from 'firebase/auth';
+import { auth } from './firebaseConfig';
 import { LayoutGrid, Music, Users, Info, ArrowLeft, User, LogOut, Lock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// Importação das Constantes e Componentes
-import { COORDENADAS_CIDADES } from './constants/cidades';
+// Hooks Personalizados
+import { useAuth } from './hooks/useAuth';
+import { useFirestoreData } from './hooks/useFirestoreData';
+
+// Importação dos Componentes
 import EnsaiosRegionais from './components/EnsaiosRegionais';
 import EnsaiosLocais from './components/EnsaiosLocais';
 import Comissao from './components/Comissao';
@@ -16,35 +18,33 @@ import Summary from './components/Summary';
 import Login from './components/Login';
 import PainelMaster from './components/PainelMaster'; 
 import ListaOficial from './components/ListaOficial';
+import Dashboard from './components/Dashboard';
 
 function App() {
   const [modulo, setModulo] = useState('hub');
   const [diaFiltro, setDiaFiltro] = useState('');
-  const [todosEnsaios, setTodosEnsaios] = useState([]);
-  const [ensaiosRegionaisData, setEnsaiosRegionaisData] = useState([]);
-  const [encarregadosData, setEncarregadosData] = useState([]);
-  const [examinadorasData, setExaminadorasData] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
-  const [cidadeUsuario, setCidadeUsuario] = useState(null);
-  
-  const [user, setUser] = useState(null);
-  const [userData, setUserData] = useState(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showPainelMaster, setShowPainelMaster] = useState(false);
-  const [pendenciasCount, setPendenciasCount] = useState(0);
+  const [direcao, setDirecao] = useState(0);
+
+  // Consumo dos Hooks - pendenciasCount monitora o banco em tempo real através do useAuth
+  const { user, userData, pendenciasCount } = useAuth();
+  const { todosEnsaios, ensaiosRegionaisData, encarregadosData, examinadorasData, loading } = useFirestoreData();
 
   const touchStartX = useRef(null);
   const touchEndX = useRef(null);
 
-  const ORDEM_MODULOS = ['hub', 'locais', 'regionais', 'comissao', 'avisos'];
+  // Módulos disponíveis para navegação
+  const ORDEM_MODULOS = ['hub', 'locais', 'regionais', 'comissao', 'avisos', 'dashboard'];
 
   const TITULOS_MODULOS = {
     'hub': { p1: 'Visão', p2: 'Geral' },
     'locais': { p1: 'Ensaios', p2: 'Locais' },
     'regionais': { p1: 'Ensaios', p2: 'Regionais' },
     'comissao': { p1: 'Contatos', p2: 'Úteis' },
-    'avisos': { p1: 'Infos', p2: 'Importantes' }
+    'avisos': { p1: 'Infos', p2: 'Importantes' },
+    'dashboard': { p1: 'Status', p2: 'Analítico' }
   };
 
   const variacoesPagina = {
@@ -53,85 +53,26 @@ function App() {
     exit: (direcao) => ({ opacity: 0, x: direcao > 0 ? -100 : 100 }),
   };
 
-  const [direcao, setDirecao] = useState(0);
-
   const mudarModulo = (novoModulo) => {
     const indexAtual = ORDEM_MODULOS.indexOf(modulo);
     const indexNovo = ORDEM_MODULOS.indexOf(novoModulo);
-
-    if (novoModulo !== 'locais') {
-      setDiaFiltro('');
-    }
-
+    if (novoModulo !== 'locais') setDiaFiltro('');
     setDirecao(indexNovo > indexAtual ? 1 : -1);
     setModulo(novoModulo);
   };
-
-  useEffect(() => {
-    let unsubUserData = null;
-    let unsubPendencias = null;
-
-    const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        // Busca dados do perfil no Firestore
-        unsubUserData = onSnapshot(doc(db, "usuarios", currentUser.uid), (docSnap) => {
-          if (docSnap.exists() && docSnap.data().ativo) {
-            const data = docSnap.data();
-            setUserData(data);
-            setCidadeUsuario(data.cidade);
-
-            // Ajuste de Segurança: Só ouve pendências se for Master e o listener ainda não existir
-            if (data.nivel === 'master' && !unsubPendencias) {
-              const qPendentes = query(collection(db, "usuarios"), where("status", "==", "pendente"));
-              unsubPendencias = onSnapshot(qPendentes, 
-                (s) => setPendenciasCount(s.size),
-                (error) => console.log("Permissões de Master em processamento...")
-              );
-            }
-          } else {
-            signOut(auth);
-            setUserData(null);
-          }
-        });
-      } else {
-        setUserData(null);
-        setPendenciasCount(0);
-        if (unsubUserData) unsubUserData();
-        if (unsubPendencias) unsubPendencias();
-        unsubPendencias = null;
-      }
-    });
-
-    // Listeners Globais
-    const unsubRegionais = onSnapshot(collection(db, "ensaios_regionais"), (s) => setEnsaiosRegionaisData(s.docs.map(d => ({id: d.id, ...d.data()}))));
-    const unsubLocais = onSnapshot(collection(db, "ensaios_locais"), (s) => {
-      setTodosEnsaios(s.docs.map(d => ({id: d.id, ...d.data()})));
-      setLoading(false);
-    });
-    const unsubEncarregados = onSnapshot(collection(db, "encarregados_regionais"), (s) => setEncarregadosData(s.docs.map(d => ({id: d.id, ...d.data()}))));
-    const unsubExaminadoras = onSnapshot(collection(db, "examinadoras"), (s) => setExaminadorasData(s.docs.map(d => ({id: d.id, ...d.data()}))));
-
-    return () => {
-      unsubAuth();
-      unsubRegionais();
-      unsubLocais();
-      unsubEncarregados();
-      unsubExaminadoras();
-      if (unsubUserData) unsubUserData();
-      if (unsubPendencias) unsubPendencias();
-    };
-  }, []);
 
   const aoFinalizarToque = () => {
     if (!touchStartX.current || !touchEndX.current) return;
     const distanciaX = touchStartX.current - touchEndX.current;
     const indexAtual = ORDEM_MODULOS.indexOf(modulo);
+    
+    // Swipe logic - Ignora se estiver no dashboard ou avisos por causa de tabelas/scroll
+    if (modulo === 'dashboard' || modulo === 'avisos') return;
 
-    if (distanciaX > 70) { 
-      if (indexAtual < ORDEM_MODULOS.length - 1) mudarModulo(ORDEM_MODULOS[indexAtual + 1]);
-    } else if (distanciaX < -70) { 
-      if (indexAtual > 0) mudarModulo(ORDEM_MODULOS[indexAtual - 1]);
+    if (distanciaX > 70 && indexAtual < ORDEM_MODULOS.indexOf('dashboard') - 1) {
+      mudarModulo(ORDEM_MODULOS[indexAtual + 1]);
+    } else if (distanciaX < -70 && indexAtual > 0) {
+      mudarModulo(ORDEM_MODULOS[indexAtual - 1]);
     }
     touchStartX.current = null; touchEndX.current = null;
   };
@@ -172,6 +113,7 @@ function App() {
                       className={`p-3 rounded-2xl transition-all shadow-lg ${user ? (userData?.nivel === 'master' ? 'bg-amber-500' : 'bg-blue-600') : 'bg-slate-950'} text-white`}>
                 {user ? <User size={18} /> : <Lock size={18} />}
               </button>
+
               {pendenciasCount > 0 && userData?.nivel === 'master' && (
                 <span className="absolute -top-1 -left-1 w-5 h-5 bg-orange-600 border-2 border-white rounded-full flex items-center justify-center text-[9px] font-black text-white animate-bounce shadow-md">
                   {pendenciasCount}
@@ -210,8 +152,10 @@ function App() {
                   todosEnsaios={todosEnsaios} 
                   ensaiosRegionais={ensaiosRegionaisData} 
                   aoVerMais={(d) => {setDiaFiltro(d); mudarModulo('locais');}} 
-                  cidadeUsuario={cidadeUsuario}
+                  aoAbrirDashboard={() => mudarModulo('dashboard')}
+                  cidadeUsuario={userData?.cidade}
                   user={userData} 
+                  pendenciasCount={pendenciasCount}
                 />
                 
                 <div className="px-6 grid grid-cols-2 gap-3 w-full mt-4">
@@ -231,7 +175,7 @@ function App() {
                     <Info size={28} />
                     <span className="text-[9px] font-black uppercase tracking-[0.2em]">Infos</span>
                   </button>
-                  <div className="col-span-2"><ListaOficial user={userData} /></div>
+                  <div className="col-span-2"><ListaOficial /></div>
                 </div>
               </div>
             )}
@@ -240,6 +184,16 @@ function App() {
             {modulo === 'regionais' && <EnsaiosRegionais ensaiosRegionais={ensaiosRegionaisData} loading={loading} user={userData} />}
             {modulo === 'comissao' && <Comissao encarregados={encarregadosData} examinadoras={examinadorasData} loading={loading} user={userData} />}
             {modulo === 'avisos' && <Avisos user={userData} />}
+            
+            {modulo === 'dashboard' && (
+              <Dashboard 
+                todosEnsaios={todosEnsaios}
+                ensaiosRegionais={ensaiosRegionaisData}
+                examinadoras={examinadorasData}
+                encarregados={encarregadosData}
+                user={userData}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </main>

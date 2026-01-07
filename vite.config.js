@@ -13,7 +13,7 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'assets/Logo_oficial_CCB.png'],
       manifest: {
         name: 'Calendário Musical Regional',
-        short_name: 'Musical Jundiaí',
+        short_name: 'CCB Calendário Musical Regional Jundiaí',
         description: 'Gestão de Ensaios Regionais e Locais - Jundiaí',
         theme_color: '#0F172A',
         background_color: '#F1F5F9',
