@@ -4,7 +4,7 @@ import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestor
 import { 
   MapPin, TrendingUp, UserCheck, ShieldCheck, 
   Activity, AlertTriangle, LineChart as LineIcon,
-  ArrowRight, ChevronRight, BarChart3, Info, Trophy
+  ArrowRight, ChevronRight, BarChart3, Info, Trophy, Users, X
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -66,17 +66,27 @@ const Dashboard = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarregados,
     };
   }, [todosEnsaios, ensaiosRegionais, examinadoras, encarregados, cidadeSelecionada, semanaFiltro]);
 
+  const totalEncarregadosLocais = useMemo(() => {
+    const listaNomes = dadosFiltrados.locais
+      .map(e => e.encarregado)
+      .filter(n => n && n !== "-" && n !== "N/I");
+    return new Set(listaNomes).size;
+  }, [dadosFiltrados.locais]);
+
   const dadosGraficoRegionais = useMemo(() => {
     return MESES.map(mes => {
       const regionaisNoMes = dadosFiltrados.regionais.filter(e => e.mes === mes);
       const row = { name: mes.substring(0, 3), total: regionaisNoMes.length };
-      CIDADES_LISTA.forEach(cidade => {
+      
+      const cidadesParaLegenda = isMaster ? CIDADES_LISTA : [user?.cidade];
+      
+      cidadesParaLegenda.forEach(cidade => {
         const qtd = regionaisNoMes.filter(e => normalizarTexto(e.sede) === normalizarTexto(cidade)).length;
         if (qtd > 0) row[cidade] = qtd;
       });
       return row;
     });
-  }, [dadosFiltrados.regionais]);
+  }, [dadosFiltrados.regionais, isMaster, user]);
 
   const stats = useMemo(() => {
     const escopoRegional = cidadeSelecionada === 'REGIONAL';
@@ -123,9 +133,16 @@ const Dashboard = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarregados,
 
   const maxComissao = useMemo(() => {
     const escopo = cidadeSelecionada === 'REGIONAL' ? CIDADES_LISTA : [cidadeSelecionada];
-    const valores = escopo.map(c => indexComissao === 0 ? encarregados.filter(e => normalizarTexto(e.city) === normalizarTexto(c)).length : examinadoras.filter(e => normalizarTexto(e.city) === normalizarTexto(c)).length);
+    const valores = escopo.map(c => {
+        if(indexComissao === 0) return encarregados.filter(e => normalizarTexto(e.city) === normalizarTexto(c)).length;
+        if(indexComissao === 1) {
+            const nomes = todosEnsaios.filter(e => normalizarTexto(e.cidade) === normalizarTexto(c)).map(e => e.encarregado).filter(n => n && n !== "-" && n !== "N/I");
+            return new Set(nomes).size;
+        }
+        return examinadoras.filter(e => normalizarTexto(e.city) === normalizarTexto(c)).length;
+    });
     return Math.max(...valores, 1);
-  }, [encarregados, examinadoras, indexComissao, cidadeSelecionada]);
+  }, [encarregados, examinadoras, todosEnsaios, indexComissao, cidadeSelecionada]);
 
   const analiseUsoData = useMemo(() => {
     const filtrado = telemetria.filter(t => cidadeSelecionada === 'REGIONAL' || normalizarTexto(t.cidade) === normalizarTexto(cidadeSelecionada));
@@ -135,16 +152,13 @@ const Dashboard = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarregados,
   }, [telemetria, cidadeSelecionada]);
 
   const rankingAtividade = useMemo(() => {
-    const cidades = {}; const usuarios = {};
-    historicoAlteracoes.filter(h => cidadeSelecionada === 'REGIONAL' || normalizarTexto(h.cidade) === normalizarTexto(cidadeSelecionada)).forEach(log => {
-      cidades[log.cidade] = (cidades[log.cidade] || 0) + 1;
+    const usuarios = {};
+    const base = isMaster ? historicoAlteracoes : historicoAlteracoes.filter(h => normalizarTexto(h.cidade) === normalizarTexto(user?.cidade));
+    base.forEach(log => {
       usuarios[log.solicitanteNome] = (usuarios[log.solicitanteNome] || 0) + 1;
     });
-    return { 
-      cidades: Object.entries(cidades).sort((a,b) => b[1] - a[1]).slice(0, 3), 
-      usuarios: Object.entries(usuarios).sort((a,b) => b[1] - a[1]).slice(0, 3) 
-    };
-  }, [historicoAlteracoes, cidadeSelecionada]);
+    return Object.entries(usuarios).sort((a,b) => b[1] - a[1]).slice(0, 3);
+  }, [historicoAlteracoes, isMaster, user]);
 
   const ChartBarItem = ({ label, valor, max, color }) => (
     <div className="space-y-1">
@@ -168,25 +182,26 @@ const Dashboard = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarregados,
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm"><MapPin className="text-blue-600 mb-2" size={18} /><span className="text-[7px] font-black uppercase text-slate-400 block tracking-tighter">Ensaios Locais</span><h3 className="text-xl font-[900] text-slate-950 italic leading-none">{dadosFiltrados.locais.length}</h3></div>
         <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm"><TrendingUp className="text-slate-950 mb-2" size={18} /><span className="text-[7px] font-black uppercase text-slate-400 block tracking-tighter">Ensaios Regionais</span><h3 className="text-xl font-[900] text-slate-950 italic leading-none">{dadosFiltrados.regionais.length}</h3></div>
-        <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm"><ShieldCheck className="text-purple-600 mb-2" size={18} /><span className="text-[7px] font-black uppercase text-slate-400 block tracking-tighter">Comissão</span><h3 className="text-xl font-[900] text-slate-950 italic leading-none">{dadosFiltrados.encarregados.length}</h3></div>
+        <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm"><ShieldCheck className="text-purple-600 mb-2" size={18} /><span className="text-[7px] font-black uppercase text-slate-400 block tracking-tighter">Enc. Regionais</span><h3 className="text-xl font-[900] text-slate-950 italic leading-none">{dadosFiltrados.encarregados.length}</h3></div>
         <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm"><UserCheck className="text-pink-600 mb-2" size={18} /><span className="text-[7px] font-black uppercase text-slate-400 block tracking-tighter">Examinadoras</span><h3 className="text-xl font-[900] text-slate-950 italic leading-none">{dadosFiltrados.examinadoras.length}</h3></div>
+        <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm"><Users className="text-emerald-600 mb-2" size={18} /><span className="text-[7px] font-black uppercase text-slate-400 block tracking-tighter">Enc. Locais</span><h3 className="text-xl font-[900] text-slate-950 italic leading-none">{totalEncarregadosLocais}</h3></div>
       </div>
 
       <div className="space-y-3">
         <div className="flex justify-between items-center px-2">
           <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-widest">
-            {indexGraficoRegional === 0 ? 'Ensaios Regionais por Mês' : 'Ensaios Regionais por cidade'}
+            {indexGraficoRegional === 0 ? 'Ensaios Regionais por Mês' : 'Ensaios Regionais por Cidade'}
           </h4>
           <div className="flex gap-1">
             <button onClick={() => setIndexGraficoRegional(0)} className={`w-1.5 h-1.5 rounded-full ${indexGraficoRegional === 0 ? 'bg-amber-500' : 'bg-slate-200'}`} />
             <button onClick={() => setIndexGraficoRegional(1)} className={`w-1.5 h-1.5 rounded-full ${indexGraficoRegional === 1 ? 'bg-amber-500' : 'bg-slate-200'}`} />
           </div>
         </div>
-        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm min-h-[300px] overflow-hidden relative">
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm min-h-[340px] overflow-hidden relative">
           <AnimatePresence mode="wait">
             <motion.div key={indexGraficoRegional} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={(e, info) => { if (info.offset.x < -40 && indexGraficoRegional < 1) setIndexGraficoRegional(1); if (info.offset.x > 40 && indexGraficoRegional > 0) setIndexGraficoRegional(0); }} className="cursor-grab active:cursor-grabbing">
-              <div className="h-[240px] w-full min-h-[240px]" style={{ minWidth: '0px' }}>
-                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+              <div className="h-[260px] w-full min-h-[260px]">
+                <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={dadosGraficoRegionais} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: '900' }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: '900' }} />
@@ -197,8 +212,8 @@ const Dashboard = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarregados,
                       </Bar>
                     ) : (
                       <>
-                        <Legend iconType="circle" wrapperStyle={{ fontSize: '7px', fontWeight: '900', textTransform: 'uppercase', paddingTop: '10px', bottom: -10 }} />
-                        {CIDADES_LISTA.map((cidade, idx) => (
+                        <Legend verticalAlign="bottom" align="center" iconType="circle" wrapperStyle={{ fontSize: '7px', fontWeight: '900', textTransform: 'uppercase', paddingTop: '20px' }} />
+                        {(isMaster ? CIDADES_LISTA : [user?.cidade]).map((cidade, idx) => (
                           <Bar key={cidade} dataKey={cidade} stackId="a" fill={CORES_PALETA[idx % CORES_PALETA.length]} radius={idx === 0 ? [0,0,0,0] : [4, 4, 0, 0]} />
                         ))}
                       </>
@@ -213,18 +228,25 @@ const Dashboard = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarregados,
 
       <div className="space-y-3">
         <div className="flex justify-between items-center px-2"><h4 className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{indexEnsaios === 0 ? 'Ensaios Locais por Cidade' : 'Ensaios Regionais por Cidade'}</h4><div className="flex gap-1"><button onClick={() => setIndexEnsaios(0)} className={`w-1.5 h-1.5 rounded-full ${indexEnsaios === 0 ? 'bg-blue-600' : 'bg-slate-200'}`} /><button onClick={() => setIndexEnsaios(1)} className={`w-1.5 h-1.5 rounded-full ${indexEnsaios === 1 ? 'bg-blue-600' : 'bg-slate-200'}`} /></div></div>
-        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden relative min-h-[220px]"><AnimatePresence mode="wait"><motion.div key={indexEnsaios} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={(e, info) => { if (info.offset.x < -40 && indexEnsaios < 1) setIndexEnsaios(1); if (info.offset.x > 40 && indexEnsaios > 0) setIndexEnsaios(0); }} className="space-y-3 cursor-grab h-[180px] overflow-y-auto no-scrollbar">{(cidadeSelecionada === 'REGIONAL' ? CIDADES_LISTA : [cidadeSelecionada]).map(c => ({ c, val: indexEnsaios === 0 ? todosEnsaios.filter(e => normalizarTexto(e.cidade) === normalizarTexto(c)).length : ensaiosRegionais.filter(e => normalizarTexto(e.sede) === normalizarTexto(c)).length })).sort((a, b) => b.val - a.val).map(item => item.val > 0 ? (<ChartBarItem key={item.c} label={item.c} valor={item.val} max={maxEnsaios} color={indexEnsaios === 0 ? "bg-blue-600" : "bg-slate-950"} />) : null)}</motion.div></AnimatePresence></div>
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden relative"><AnimatePresence mode="wait"><motion.div key={indexEnsaios} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={(e, info) => { if (info.offset.x < -40 && indexEnsaios < 1) setIndexEnsaios(1); if (info.offset.x > 40 && indexEnsaios > 0) setIndexEnsaios(0); }} className="space-y-3 cursor-grab h-auto overflow-y-auto no-scrollbar">{(cidadeSelecionada === 'REGIONAL' ? CIDADES_LISTA : [cidadeSelecionada]).map(c => ({ c, val: indexEnsaios === 0 ? todosEnsaios.filter(e => normalizarTexto(e.cidade) === normalizarTexto(c)).length : ensaiosRegionais.filter(e => normalizarTexto(e.sede) === normalizarTexto(c)).length })).filter(item => item.val > 0).sort((a, b) => b.val - a.val).map(item => (<ChartBarItem key={item.c} label={item.c} valor={item.val} max={maxEnsaios} color={indexEnsaios === 0 ? "bg-blue-600" : "bg-slate-950"} />))}</motion.div></AnimatePresence></div>
       </div>
 
       <div className="space-y-3">
         <div className="flex justify-between items-center px-2 text-[9px] font-black uppercase text-slate-400 tracking-widest">
-          <h4>{indexComissao === 0 ? 'Encarregados Regionais' : 'Examinadoras'}</h4>
+          <h4>{indexComissao === 0 ? 'Encarregados Regionais' : indexComissao === 1 ? 'Encarregados Locais' : 'Examinadoras'}</h4>
           <div className="flex gap-1">
             <button onClick={() => setIndexComissao(0)} className={`w-1.5 h-1.5 rounded-full ${indexComissao === 0 ? 'bg-purple-600' : 'bg-slate-200'}`} />
             <button onClick={() => setIndexComissao(1)} className={`w-1.5 h-1.5 rounded-full ${indexComissao === 1 ? 'bg-purple-600' : 'bg-slate-200'}`} />
+            <button onClick={() => setIndexComissao(2)} className={`w-1.5 h-1.5 rounded-full ${indexComissao === 2 ? 'bg-purple-600' : 'bg-slate-200'}`} />
           </div>
         </div>
-        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden min-h-[220px]"><AnimatePresence mode="wait"><motion.div key={indexComissao} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={(e, info) => { if (info.offset.x < -40 && indexComissao < 1) setIndexComissao(1); if (info.offset.x > 40 && indexComissao > 0) setIndexComissao(0); }} className="space-y-3 cursor-grab h-[180px] overflow-y-auto no-scrollbar">{(cidadeSelecionada === 'REGIONAL' ? CIDADES_LISTA : [cidadeSelecionada]).map(c => ({ c, val: indexComissao === 0 ? encarregados.filter(e => normalizarTexto(e.city) === normalizarTexto(c)).length : examinadoras.filter(e => normalizarTexto(e.city) === normalizarTexto(c)).length })).sort((a, b) => b.val - a.val).map(item => item.val > 0 ? (<ChartBarItem key={item.c} label={item.c} valor={item.val} max={maxComissao} color={indexComissao === 0 ? "bg-purple-600" : "bg-pink-600"} />) : null)}</motion.div></AnimatePresence></div>
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden relative"><AnimatePresence mode="wait"><motion.div key={indexComissao} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={(e, info) => { if (info.offset.x < -40 && indexComissao < 2) setIndexComissao(indexComissao + 1); if (info.offset.x > 40 && indexComissao > 0) setIndexComissao(indexComissao - 1); }} className="space-y-3 cursor-grab h-auto overflow-y-auto no-scrollbar">{(cidadeSelecionada === 'REGIONAL' ? CIDADES_LISTA : [cidadeSelecionada]).map(c => {
+                let val = 0;
+                if(indexComissao === 0) val = encarregados.filter(e => normalizarTexto(e.city) === normalizarTexto(c)).length;
+                else if(indexComissao === 1) val = new Set(todosEnsaios.filter(e => normalizarTexto(e.cidade) === normalizarTexto(c)).map(e => e.encarregado).filter(n => n && n !== "-" && n !== "N/I")).size;
+                else val = examinadoras.filter(e => normalizarTexto(e.city) === normalizarTexto(c)).length;
+                return { c, val };
+            }).filter(item => item.val > 0).sort((a, b) => b.val - a.val).map(item => (<ChartBarItem key={item.c} label={item.c} valor={item.val} max={maxComissao} color={indexComissao === 0 ? "bg-purple-600" : indexComissao === 1 ? "bg-emerald-600" : "bg-pink-600"} />))}</motion.div></AnimatePresence></div>
       </div>
 
       <div className="space-y-4">
@@ -238,11 +260,13 @@ const Dashboard = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarregados,
       </div>
 
       <div className="bg-white p-8 rounded-[3.5rem] border border-slate-100 space-y-12 shadow-sm">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="p-2 bg-amber-500 rounded-xl"><AlertTriangle size={18} className="text-white" /></div><h4 className="text-sm font-black uppercase italic tracking-tighter leading-none">Pendências Informativas</h4></div><button onClick={() => setShowSaudeInfo(!showSaudeInfo)} className={`px-4 py-1.5 rounded-full border transition-all flex items-center gap-2 ${stats.saudeTotal < 100 ? 'border-amber-500 text-amber-600 bg-amber-50' : 'border-emerald-500 text-emerald-600 bg-emerald-50'} text-[9px] font-black active:scale-95`}>{stats.saudeTotal}% OK <Info size={12}/></button></div>
-          <AnimatePresence>{showSaudeInfo && (<motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-[9px] font-bold text-slate-500 uppercase leading-relaxed overflow-hidden">DADOS SAUDÁVEIS = Campos preenchidos sem "-". Toque na cidade abaixo para ver detalhes.</motion.div>)}</AnimatePresence>
-          <div className="space-y-2">{stats.pendencias.map(p => (<button key={p.cidade} onClick={() => setDetalheModal({ titulo: `Pendências: ${p.cidade}`, itens: p.itens })} className="w-full flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-100 active:scale-95 transition-all"><span className="text-[10px] font-black uppercase text-slate-600 italic">{p.cidade}</span><div className="flex items-center gap-2"><span className="text-[10px] font-black text-amber-500 uppercase">{p.qtd} campos faltando</span><ChevronRight size={12} className="text-slate-300"/></div></button>))}</div>
-        </div>
+        {isMaster && (
+            <div className="space-y-4">
+                <div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="p-2 bg-amber-500 rounded-xl"><AlertTriangle size={18} className="text-white" /></div><h4 className="text-sm font-black uppercase italic tracking-tighter leading-none">Pendências Informativas</h4></div><button onClick={() => setShowSaudeInfo(!showSaudeInfo)} className={`px-4 py-1.5 rounded-full border transition-all flex items-center gap-2 ${stats.saudeTotal < 100 ? 'border-amber-500 text-amber-600 bg-amber-50' : 'border-emerald-500 text-emerald-600 bg-emerald-50'} text-[9px] font-black active:scale-95`}>{stats.saudeTotal}% OK <Info size={12}/></button></div>
+                <AnimatePresence>{showSaudeInfo && (<motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-[9px] font-bold text-slate-500 uppercase leading-relaxed overflow-hidden">DADOS SAUDÁVEIS = Campos preenchidos sem "-". Toque na cidade abaixo para ver detalhes.</motion.div>)}</AnimatePresence>
+                <div className="space-y-2">{stats.pendencias.map(p => (<button key={p.cidade} onClick={() => setDetalheModal({ titulo: `Pendências: ${p.cidade}`, itens: p.itens })} className="w-full flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-100 active:scale-95 transition-all"><span className="text-[10px] font-black uppercase text-slate-600 italic">{p.cidade}</span><div className="flex items-center gap-2"><span className="text-[10px] font-black text-amber-500 uppercase">{p.qtd} campos faltando</span><ChevronRight size={12} className="text-slate-300"/></div></button>))}</div>
+            </div>
+        )}
 
         <div className="space-y-4 border-t border-slate-100 pt-8"><div className="flex items-center gap-3 mb-6"><div className="p-2 bg-blue-600 rounded-xl"><LineIcon size={18} className="text-white" /></div><h4 className="text-sm font-black uppercase italic tracking-tighter">Fluxo Público (Visão {cidadeSelecionada})</h4></div><div className="h-[160px] w-full" style={{ minWidth: 0 }}>
           <ResponsiveContainer width="100%" height="100%" minWidth={0}>
@@ -250,11 +274,31 @@ const Dashboard = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarregados,
           </ResponsiveContainer>
         </div></div>
 
-        <div className="space-y-6 border-t border-slate-100 pt-8"><div className="space-y-4"><span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block px-1 flex items-center gap-2"><Trophy size={12}/> Ranking de Zelo (Aprovadas por Visão)</span><div className="space-y-3">{rankingAtividade.usuarios.map(([u, q], i) => (<div key={u} className="flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-100"><span className="text-slate-600 text-[10px] font-black uppercase italic">{i+1}º {u}</span><span className="text-emerald-500 text-[10px] font-black">{q} Aprovadas</span></div>))}</div></div></div>
+        <div className="space-y-6 border-t border-slate-100 pt-8"><div className="space-y-4"><span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block px-1 flex items-center gap-2"><Trophy size={12}/> Ranking de Zelo (Aprovadas por Visão)</span><div className="space-y-3">{rankingAtividade.map(([u, q], i) => (<div key={u} className="flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-100"><span className="text-slate-600 text-[10px] font-black uppercase italic">{i+1}º {u}</span><span className="text-emerald-500 text-[10px] font-black">{q} Aprovadas</span></div>))}</div></div></div>
       </div>
 
       {detalheModal && createPortal(
-        <div className="fixed inset-0 z-[4000] flex items-center justify-center p-6 bg-slate-950/60 backdrop-blur-md"><div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left"><button onClick={() => setDetalheModal(null)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90"><ChevronRight size={18}/></button><h3 className="text-lg font-[900] uppercase italic text-slate-950 mb-6 pr-8 leading-tight">{detalheModal.titulo}</h3><div className="space-y-3 max-h-[50vh] overflow-y-auto no-scrollbar">{detalheModal.itens.length === 0 ? <p className="text-[10px] font-bold text-slate-400 uppercase text-center py-10">Nenhum dado pendente.</p> : detalheModal.itens.map((item, i) => (<div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100"><h4 className="text-[11px] font-[900] uppercase text-slate-950">{item.localidade}</h4><div className="flex flex-col mt-2 text-[9px] font-bold uppercase gap-1"><span className={item.encarregado === "-" ? "text-amber-600" : "text-slate-400"}>👤 {item.encarregado}</span><span className={item.contato === "-" ? "text-amber-600" : "text-slate-400"}>📱 {item.contato}</span><div className="flex justify-between items-center mt-1 pt-1 border-t border-slate-200/50"><span className="text-slate-400">📅 {item.dia}</span><span className="text-blue-600 font-black">{item.hora || '-'}</span></div></div></div>))}</div></div></div>, document.body
+        <div onClick={() => setDetalheModal(null)} className="fixed inset-0 z-[4000] flex items-center justify-center p-6 bg-slate-950/60 backdrop-blur-md">
+            <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left">
+                <button onClick={() => setDetalheModal(null)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90"><X size={18}/></button>
+                <h3 className="text-lg font-[900] uppercase italic text-slate-950 mb-6 pr-8 leading-tight">{detalheModal.titulo}</h3>
+                <div className="space-y-3 max-h-[50vh] overflow-y-auto no-scrollbar">
+                    {detalheModal.itens.length === 0 ? <p className="text-[10px] font-bold text-slate-400 uppercase text-center py-10">Nenhum dado pendente.</p> : detalheModal.itens.map((item, i) => (
+                        <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                            <h4 className="text-[11px] font-[900] uppercase text-slate-950">{item.localidade}</h4>
+                            <div className="flex flex-col mt-2 text-[9px] font-bold uppercase gap-1">
+                                <span className={item.encarregado === "-" ? "text-amber-600" : "text-slate-400"}>👤 {item.encarregado}</span>
+                                <span className={item.contato === "-" ? "text-amber-600" : "text-slate-400"}>📱 {item.contato}</span>
+                                <div className="flex justify-between items-center mt-1 pt-1 border-t border-slate-200/50">
+                                    <span className="text-slate-400">📅 {item.dia}</span>
+                                    <span className="text-blue-600 font-black">{item.hora || '-'}</span>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>, document.body
       )}
     </div>
   );

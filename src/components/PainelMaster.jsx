@@ -9,10 +9,12 @@ import { sendPasswordResetEmail } from 'firebase/auth';
 import { 
   Check, X, Database, RefreshCw, ShieldCheck, ShieldAlert,
   MapPin, Users, Edit3, Save, Mail, AlertCircle, User, Lock, Briefcase, Trash2, ArrowRight, Shield, TrendingDown, Clock, Activity, Trophy, Home, Star,
-  History as HistoryIcon // Renomeado para evitar conflito com o objeto global window.history
+  MessageSquare, ChevronDown, ChevronUp,
+  History as HistoryIcon 
 } from 'lucide-react';
 import Feedback from './Feedback';
 import { createPortal } from 'react-dom';
+import AbaFeedbackMaster from './AbaFeedbackMaster'; 
 
 // Importações de Constantes e Utilitários
 import { CIDADES_LISTA, CARGOS_LISTA } from '../constants/cidades';
@@ -28,6 +30,12 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
   const [sugestoesAlteracao, setSugestoesAlteracao] = useState([]);
   const [todosUsuarios, setTodosUsuarios] = useState([]);
   const [rankingAtividade, setRankingAtividade] = useState([]);
+  const [countTickets, setCountTickets] = useState(0); 
+
+  const [openAcessos, setOpenAcessos] = useState(false);
+  const [openDados, setOpenDados] = useState(false);
+  const [openApp, setOpenApp] = useState(false);
+
   const [aba, setAba] = useState(userLogado?.nivel === 'master' ? 'pendentes' : 'perfil');
   const [feedback, setFeedback] = useState(null);
   const [loadingModulos, setLoadingModulos] = useState({});
@@ -47,7 +55,7 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
   useEffect(() => {
     if (!userLogado || !isMaster) return;
 
-    let unsubP, unsubS, unsubC, unsubR;
+    let unsubP, unsubS, unsubC, unsubR, unsubT;
 
     unsubP = onSnapshot(collection(db, "usuarios"), (snap) => {
       const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -59,6 +67,10 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
     unsubS = onSnapshot(collection(db, "sugestoes_pendentes"), (snap) => {
       setSugestoesAlteracao(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (err) => console.error("Erro Sugestões:", err));
+
+    unsubT = onSnapshot(query(collection(db, "feedback_usuarios"), where("status", "==", "pendente")), (snap) => {
+      setCountTickets(snap.size);
+    });
 
     const qRanking = query(
       collection(db, "sugestoes_aprovadas_historico"), 
@@ -78,6 +90,7 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
       if (unsubS) unsubS(); 
       if (unsubC) unsubC(); 
       if (unsubR) unsubR();
+      if (unsubT) unsubT();
     };
   }, [isMaster, userLogado]);
 
@@ -172,17 +185,6 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
     finally { setLoadingModulos(prev => ({ ...prev, [tipo]: false })); }
   };
 
-  const rankingAgrupado = useMemo(() => {
-    const counts = {};
-    rankingAtividade.forEach(item => {
-      const nome = item.solicitanteNome || "Sistema";
-      counts[nome] = (counts[nome] || 0) + 1;
-    });
-    return Object.entries(counts)
-      .map(([nome, qtd]) => ({ nome, qtd }))
-      .sort((a, b) => b.qtd - a.qtd);
-  }, [rankingAtividade]);
-
   const CompararCampo = ({ label, antigo, novo }) => {
     const mudou = String(antigo || '').trim() !== String(novo || '').trim();
     if (!antigo && !novo) return null;
@@ -215,13 +217,12 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
             <button onClick={aoFechar} className="p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90"><X size={20}/></button>
           </div>
 
-          <div className="grid grid-cols-5 gap-1 bg-slate-100 p-1.5 rounded-2xl">
+          <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1.5 rounded-2xl">
             <button onClick={() => setAba('perfil')} className={`py-3 rounded-xl text-[7px] font-black uppercase transition-all ${aba === 'perfil' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Perfil</button>
             {isMaster && (
               <>
                 <button onClick={() => setAba('pendentes')} className={`py-3 rounded-xl text-[7px] font-black uppercase transition-all ${aba === 'pendentes' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Solicit.</button>
                 <button onClick={() => setAba('usuarios')} className={`py-3 rounded-xl text-[7px] font-black uppercase transition-all ${aba === 'usuarios' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Users</button>
-                <button onClick={() => setAba('auditoria')} className={`py-3 rounded-xl text-[7px] font-black uppercase transition-all ${aba === 'auditoria' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Zelo</button>
                 <button onClick={() => setAba('config')} className={`py-3 rounded-xl text-[7px] font-black uppercase transition-all ${aba === 'config' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Manut.</button>
               </>
             )}
@@ -237,13 +238,95 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
                   <div className="flex items-center gap-3"><div className="p-3 bg-slate-950 text-white rounded-2xl"><User size={20}/></div><h4 className="text-[11px] font-black uppercase text-slate-950 italic">Dados do Perfil</h4></div>
                   <button type="button" onClick={() => resetarSenhaUsuario(userLogado.email)} className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-xl text-[7px] font-black uppercase border border-blue-100 active:scale-95 transition-all"><Lock size={12}/> Reset Senha</button>
                 </div>
-                <div className="space-y-4">
+                <div className="space-y-4 text-left">
                   <div className="flex flex-col gap-1"><span className="text-[8px] font-black uppercase text-slate-400 ml-2">Nome</span><input required type="text" value={meuNome} onChange={e => setMeuNome(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none uppercase" /></div>
                   <div className="flex flex-col gap-1"><span className="text-[8px] font-black uppercase text-slate-400 ml-2">Cidade Principal</span><select required value={minhaCidade} onChange={e => setMinhaCidade(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none">{CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                   <div className="flex flex-col gap-1"><span className="text-[8px] font-black uppercase text-slate-400 ml-2">Cargo Musical</span><select required value={meuCargo} onChange={e => setMeuCargo(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none">{CARGOS_LISTA.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                 </div>
                 <button type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 active:scale-95 shadow-lg mt-2 transition-all"><Save size={16}/> Salvar Perfil</button>
               </form>
+            </div>
+          )}
+
+          {isMaster && aba === 'pendentes' && (
+            <div className="space-y-4 animate-in text-left">
+              
+              <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+                <button onClick={() => setOpenAcessos(!openAcessos)} className="w-full p-5 flex justify-between items-center bg-white active:bg-slate-50 transition-all">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-100 text-blue-600 rounded-xl"><Shield size={18}/></div>
+                    <span className="text-[10px] font-black uppercase italic text-slate-950">Acessos Pendentes ({usuariosPendentes.length})</span>
+                  </div>
+                  {openAcessos ? <ChevronUp size={16} className="text-slate-400"/> : <ChevronDown size={16} className="text-slate-400"/>}
+                </button>
+                {openAcessos && (
+                  <div className="p-4 space-y-3 bg-slate-50/50 border-t border-slate-100">
+                    {usuariosPendentes.length === 0 ? <p className="text-center py-4 text-[9px] font-bold text-slate-400 uppercase">Nenhum acesso</p> :
+                      usuariosPendentes.map(u => (
+                        <div key={u.id} className="bg-white p-4 rounded-2xl border border-slate-100 flex justify-between items-center transition-all">
+                          <div className="flex flex-col text-left"><h4 className="text-[11px] font-black uppercase text-slate-950 italic">{u.nome}</h4><p className="text-[8px] font-bold text-slate-400 uppercase mt-1">{u.cargo} • {u.cidade}</p></div>
+                          <div className="flex gap-2">
+                            <button onClick={() => gerenciarUsuario(u.id, { status: 'aprovado', ativo: true })} className="bg-green-500 text-white p-2.5 rounded-xl shadow-md active:scale-90"><Check size={16}/></button>
+                            <button onClick={async () => await deleteDoc(doc(db, "usuarios", u.id))} className="bg-red-50 text-red-500 p-2.5 rounded-xl active:scale-90 transition-all"><Trash2 size={16}/></button>
+                          </div>
+                        </div>
+                      ))
+                    }
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+                <button onClick={() => setOpenDados(!openDados)} className="w-full p-5 flex justify-between items-center bg-white active:bg-slate-50 transition-all">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-amber-100 text-amber-600 rounded-xl"><Database size={18}/></div>
+                    <span className="text-[10px] font-black uppercase italic text-slate-950">Solicitação de Alteração ({sugestoesAlteracao.length})</span>
+                  </div>
+                  {openDados ? <ChevronUp size={16} className="text-slate-400"/> : <ChevronDown size={16} className="text-slate-400"/>}
+                </button>
+                {openDados && (
+                  <div className="p-4 space-y-4 bg-slate-50/50 border-t border-slate-100">
+                    {sugestoesAlteracao.length === 0 ? <p className="text-center py-4 text-[9px] font-bold text-slate-400 uppercase">Nenhuma alteração</p> :
+                      sugestoesAlteracao.map(s => (
+                        <div key={s.id} className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
+                          <div className="bg-slate-50 p-4 border-b border-slate-100 flex justify-between items-start">
+                            <div className="text-left">
+                              <span className="text-[7px] font-black text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full uppercase italic">Modulo: {s.tipo?.replace('_', ' ')}</span>
+                              <h4 className="text-[11px] font-[900] uppercase text-slate-950 italic mt-1 leading-none">{s.localidade || s.cidade || s.dadosSugeridos?.name}</h4>
+                              <p className="text-[7px] font-bold text-slate-400 uppercase mt-1">Por: {s.solicitanteNome}</p>
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => processarSugestao(s, true)} className="bg-emerald-500 text-white p-2 rounded-xl shadow-lg active:scale-90"><Check size={16}/></button>
+                              <button onClick={() => processarSugestao(s, false)} className="bg-slate-100 text-slate-400 p-2 rounded-xl active:scale-90"><X size={16}/></button>
+                            </div>
+                          </div>
+                          <div className="p-4 grid grid-cols-1 gap-1.5 bg-white">
+                            <CompararCampo label="Localidade" antigo={s.dadosAntigos?.localidade} novo={s.dadosSugeridos?.localidade} />
+                            <CompararCampo label="Cidade" antigo={s.dadosAntigos?.cidade} novo={s.dadosSugeridos?.cidade} />
+                            <CompararCampo label="Horário" antigo={s.dadosAntigos?.hora} novo={s.dadosSugeridos?.hora} />
+                          </div>
+                        </div>
+                      ))
+                    }
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+                <button onClick={() => setOpenApp(!openApp)} className="w-full p-5 flex justify-between items-center bg-white active:bg-slate-50 transition-all">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-emerald-100 text-emerald-600 rounded-xl"><MessageSquare size={18}/></div>
+                    <span className="text-[10px] font-black uppercase italic text-slate-950">Tickets ({countTickets})</span>
+                  </div>
+                  {openApp ? <ChevronUp size={16} className="text-slate-400"/> : <ChevronDown size={16} className="text-slate-400"/>}
+                </button>
+                {openApp && (
+                  <div className="p-4 bg-slate-50/50 border-t border-slate-100">
+                    <AbaFeedbackMaster />
+                  </div>
+                )}
+              </div>
+
             </div>
           )}
 
@@ -267,82 +350,6 @@ const PainelMaster = ({ aoFechar, userLogado }) => {
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-
-          {isMaster && aba === 'pendentes' && (
-            <div className="space-y-8 animate-in text-left">
-              <div className="space-y-3">
-                <h4 className="text-[10px] font-black uppercase text-blue-600 ml-2 tracking-widest italic flex items-center gap-2">Solicitações de Acesso ({usuariosPendentes.length})</h4>
-                {usuariosPendentes.map(u => (
-                  <div key={u.id} className="bg-white p-5 rounded-[2.2rem] shadow-sm border border-slate-100 flex justify-between items-center transition-all">
-                    <div className="flex flex-col text-left"><h4 className="text-[11px] font-black uppercase text-slate-950 italic">{u.nome}</h4><p className="text-[8px] font-bold text-slate-400 uppercase mt-1">{u.cargo} • {u.cidade}</p></div>
-                    <div className="flex gap-2">
-                      <button onClick={() => gerenciarUsuario(u.id, { status: 'aprovado', ativo: true })} className="bg-green-500 text-white p-3 rounded-xl shadow-md active:scale-90"><Check size={16}/></button>
-                      <button onClick={async () => await deleteDoc(doc(db, "usuarios", u.id))} className="bg-red-50 text-red-500 p-3 rounded-xl active:scale-90 transition-all"><Trash2 size={16}/></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="space-y-4">
-                <h4 className="text-[10px] font-black uppercase text-amber-600 ml-2 tracking-widest italic flex items-center gap-2">Auditoria de Alterações ({sugestoesAlteracao.length})</h4>
-                {sugestoesAlteracao.map(s => (
-                  <div key={s.id} className="bg-white rounded-[2.5rem] shadow-md border border-slate-100 overflow-hidden">
-                    <div className="bg-slate-50 p-6 border-b border-slate-100 flex justify-between items-start">
-                      <div className="text-left">
-                        <span className="text-[7px] font-black text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full uppercase tracking-tighter italic">Modulo: {s.tipo?.replace('_', ' ')}</span>
-                        <h4 className="text-[14px] font-[900] uppercase text-slate-950 italic mt-2 leading-none">{s.localidade || s.cidade || s.dadosSugeridos?.name}</h4>
-                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter mt-2">Irmão: <span className="text-slate-600">{s.solicitanteNome}</span></p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => processarSugestao(s, true)} className="bg-emerald-500 text-white p-3 rounded-xl shadow-lg active:scale-90"><Check size={20}/></button>
-                        <button onClick={() => processarSugestao(s, false)} className="bg-slate-100 text-slate-400 p-3 rounded-xl active:scale-90"><X size={20}/></button>
-                      </div>
-                    </div>
-                    <div className="p-6 grid grid-cols-1 gap-2 bg-white">
-                      <CompararCampo label="Localidade / Nome" antigo={s.dadosAntigos?.localidade || s.dadosAntigos?.name} novo={s.dadosSugeridos?.localidade || s.dadosSugeridos?.name} />
-                      <CompararCampo label="Cidade / Sede" antigo={s.dadosAntigos?.cidade || s.dadosAntigos?.sede} novo={s.dadosSugeridos?.cidade || s.dadosSugeridos?.sede} />
-                      <CompararCampo label="Dia / Semana" antigo={s.dadosAntigos?.dia || s.dadosAntigos?.weekday} novo={s.dadosSugeridos?.dia || s.dadosSugeridos?.weekday} />
-                      <CompararCampo label="Horário" antigo={s.dadosAntigos?.hora} novo={s.dadosSugeridos?.hora} />
-                      <CompararCampo label="Encarregado" antigo={s.dadosAntigos?.encarregado} novo={s.dadosSugeridos?.encarregado} />
-                      <CompararCampo label="Contato" antigo={s.dadosAntigos?.contato || s.dadosAntigos?.contact} novo={s.dadosSugeridos?.contato || s.dadosSugeridos?.contact} />
-                      <CompararCampo label="Observação" antigo={s.dadosAntigos?.observacao} novo={s.dadosSugeridos?.observacao} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {isMaster && aba === 'auditoria' && (
-            <div className="space-y-6 animate-in text-left">
-              <div className="space-y-3">
-                <h4 className="text-[10px] font-black uppercase text-amber-600 ml-2 tracking-widest italic flex items-center gap-2"><Trophy size={14}/> Ranking de Zelo</h4>
-                <div className="bg-white rounded-[2.2rem] border border-slate-100 shadow-sm overflow-hidden divide-y divide-slate-50">
-                  {rankingAgrupado.map((rank, i) => (
-                    <div key={rank.nome} className="p-5 flex justify-between items-center bg-white transition-all">
-                      <div className="flex items-center gap-4">
-                        <span className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-[11px] ${i === 0 ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}>{i + 1}º</span>
-                        <span className="text-[11px] font-black uppercase text-slate-950 italic">{rank.nome}</span>
-                      </div>
-                      <div className="bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100 text-[10px] font-black text-slate-950">{rank.qtd} <span className="text-[7px] text-slate-400 uppercase">Ações</span></div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-3 pt-4 border-t border-slate-200">
-                <h4 className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest italic flex items-center gap-2"><HistoryIcon size={14}/> Histórico Recente</h4>
-                {rankingAtividade.map(log => (
-                  <div key={log.id} className="bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between shadow-sm transition-all">
-                    <div className="flex flex-col text-left">
-                      <span className="text-[9px] font-black uppercase text-slate-950 italic">{log.localidade || log.cidade}</span>
-                      <span className="text-[7px] font-bold text-slate-400 uppercase">Processado por: {log.processadoPor}</span>
-                    </div>
-                    <span className="text-[8px] font-black text-slate-400 uppercase">{log.dataProcessamento?.toDate().toLocaleDateString('pt-BR')}</span>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
 

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { db } from '../firebaseConfig';
 import { collection, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { Search, Phone, MessageCircle, X, Plus, Trash2, Edit3, Send, Copy, Check } from 'lucide-react';
+import { Search, Phone, MessageCircle, X, Plus, Trash2, Edit3, Send, Copy, Check, Share2 } from 'lucide-react';
 import Feedback from './Feedback';
 
 // Importação das constantes e funções centralizadas
@@ -20,7 +20,6 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => {
   const [sugestaoAberta, setSugestaoAberta] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [copiadoId, setCopiadoId] = useState(null);
-  const [wappSeletor, setWappSeletor] = useState(null);
 
   const isMaster = user?.nivel === 'master';
   const COLEC_REGIONAIS = "encarregados_regionais"; 
@@ -38,8 +37,27 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => {
 
   const copiarParaClipboard = (texto, id) => {
     navigator.clipboard.writeText(texto);
+    setFeedback({ msg: "Número copiado!", tipo: 'sucesso' });
     setCopiadoId(id);
     setTimeout(() => setCopiadoId(null), 2000);
+  };
+
+  const compartilharContato = async (item) => {
+    const texto = `*Contato CCB Regional Jundiaí*\n👤 Nome: ${item.name}\n📍 Cidade: ${item.city || item.cidade}\n📱 Tel: ${item.contact}`;
+    
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Contato CCB',
+          text: texto
+        });
+      } catch (err) {
+        console.log("Erro ao compartilhar", err);
+      }
+    } else {
+      const limpo = item.contact.replace(/\D/g, '');
+      window.open(`https://api.whatsapp.com/send?phone=55${limpo}&text=${encodeURIComponent("Olá irmão " + item.name + ", tudo bem?")}`, '_blank');
+    }
   };
 
   const handleAddMembro = async (e) => {
@@ -100,16 +118,6 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => {
     } catch (err) { setFeedback({ msg: "Erro ao excluir", tipo: 'erro' }); }
   };
 
-  const abrirWappInteligente = (tipo, contato, nome) => {
-    const limpo = contato.replace(/\D/g, '');
-    const msg = encodeURIComponent(`Olá irmão ${nome}, tudo bem?`);
-    const link = tipo === 'business' 
-      ? `https://wa.me/55${limpo}` 
-      : `https://api.whatsapp.com/send?phone=55${limpo}&text=${msg}`;
-    window.open(link, '_blank');
-    setWappSeletor(null);
-  };
-
   const filtrados = useMemo(() => {
     return listaAtual.filter(item => {
       const nomeMembro = item.name || "";
@@ -151,13 +159,12 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => {
 
       <div className="px-6 py-6 space-y-4 pb-32">
         {filtrados.map((item) => (
-          <div key={item.id} className="bg-white rounded-[2.2rem] p-6 shadow-sm border border-slate-100 relative overflow-hidden transition-all active:bg-slate-50/50">
+          <div key={item.id} className="bg-white rounded-[2.2rem] p-6 shadow-sm border border-slate-100 relative overflow-hidden transition-all">
             <div className="flex justify-between items-center mb-4 min-h-[80px]">
               <div className="flex flex-col text-left flex-1">
                 <span className="text-amber-500 text-[11px] font-[900] uppercase italic tracking-widest mb-1">{item.city || item.cidade}</span>
                 <h3 className="text-slate-950 text-base font-[900] tracking-tighter uppercase italic leading-tight pr-4">{item.name}</h3>
                 
-                {/* LINHA DO TELEFONE COM COPIAR DESTACADO */}
                 <button 
                   onClick={() => copiarParaClipboard(item.contact, item.id)}
                   className="flex items-center gap-2 mt-3 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-100 w-fit group active:scale-95 transition-all shadow-sm"
@@ -167,24 +174,22 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => {
                 </button>
               </div>
 
-              {/* GESTÃO DO MASTER (CENTRALIZADOS NA DIREITA) */}
               <div className="flex gap-1.5 items-center">
                 {podeSugerirContato(item) && (
-                  <button onClick={() => { const data = { ...item, city: item.city || item.cidade }; isMaster ? setEditandoMembro(data) : setSugestaoAberta(data); }} className="bg-slate-50 text-slate-400 p-3 rounded-xl border border-slate-100 active:scale-90 shadow-sm"><Edit3 size={16}/></button>
+                  <button onClick={() => { const data = { ...item, city: item.city || item.cidade }; isMaster ? setEditandoMembro(data) : setSugestaoAberta(data); }} className="bg-amber-100 text-amber-600 p-3 rounded-xl border border-amber-200 active:scale-90 shadow-sm"><Edit3 size={16}/></button>
                 )}
                 {isMaster && (
-                  <button onClick={() => setConfirmaExclusao(item)} className="bg-red-50 text-red-400 p-3 rounded-xl border border-red-100 active:scale-90 shadow-sm"><Trash2 size={16}/></button>
+                  <button onClick={() => setConfirmaExclusao(item)} className="bg-red-50 text-red-500 p-3 rounded-xl border border-red-100 active:scale-90 shadow-sm"><Trash2 size={16}/></button>
                 )}
               </div>
             </div>
 
-            {/* AÇÕES DE CONTATO (PADRONIZADO CORES LOCAL) */}
             <div className="grid grid-cols-2 gap-2 pt-4 border-t border-slate-50">
               <a href={`tel:${(item.contact || "").replace(/\D/g, '')}`} className="bg-slate-50 text-blue-600 flex items-center justify-center py-4 rounded-2xl active:scale-95 border border-slate-100 shadow-sm">
                 <Phone size={20} />
               </a>
-              <button onClick={() => setWappSeletor(item)} className="bg-slate-50 text-emerald-600 flex items-center justify-center py-4 rounded-2xl active:scale-95 border border-slate-100 shadow-sm">
-                <MessageCircle size={22} />
+              <button onClick={() => compartilharContato(item)} className="bg-slate-50 text-emerald-600 flex items-center justify-center py-4 rounded-2xl active:scale-95 border border-slate-100 shadow-sm">
+                <Share2 size={20} />
               </button>
             </div>
           </div>
@@ -197,30 +202,9 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => {
         )}
       </div>
 
-      {/* PORTAL: SELETOR DE WHATSAPP */}
-      {wappSeletor && createPortal(
-        <div className="fixed inset-0 z-[3000] flex items-end justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative animate-in slide-in-from-bottom-10 text-left">
-            <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950 mb-6 leading-tight">Contatar via...</h3>
-            <div className="grid grid-cols-1 gap-3">
-              <button onClick={() => abrirWappInteligente('standard', wappSeletor.contact, wappSeletor.name)} className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl flex items-center gap-4 active:scale-95 text-left shadow-sm">
-                <div className="p-3 bg-emerald-100 text-emerald-600 rounded-xl"><MessageCircle size={20} /></div>
-                <span className="text-[12px] font-[900] uppercase text-slate-950">WhatsApp Padrão</span>
-              </button>
-              <button onClick={() => abrirWappInteligente('business', wappSeletor.contact, wappSeletor.name)} className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl flex items-center gap-4 active:scale-95 text-left shadow-sm">
-                <div className="p-3 bg-emerald-600 text-white rounded-xl"><MessageCircle size={20} /></div>
-                <span className="text-[12px] font-[900] uppercase text-slate-950">WhatsApp Business</span>
-              </button>
-            </div>
-            <button onClick={() => setWappSeletor(null)} className="w-full mt-6 py-2 text-slate-400 text-[10px] font-black uppercase text-center">Cancelar</button>
-          </div>
-        </div>, document.body
-      )}
-
-      {/* PORTAL: EDITAR / SUGERIR */}
       {(editandoMembro || sugestaoAberta) && createPortal(
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
-          <div className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left pointer-events-auto">
+        <div onClick={() => { setEditandoMembro(null); setSugestaoAberta(null); }} className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
+          <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left">
             <button onClick={() => { setEditandoMembro(null); setSugestaoAberta(null); }} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90"><X size={18}/></button>
             <h3 className="text-xl font-[900] uppercase italic text-slate-950 leading-none">{isMaster ? 'Editar Membro' : 'Sugerir Correção'}</h3>
             <form onSubmit={handleUpdateMembro} className="space-y-4 mt-8">
@@ -246,10 +230,9 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => {
         </div>, document.body
       )}
 
-      {/* PORTAL: ADICIONAR */}
       {mostraAdd && createPortal(
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
-          <div className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left pointer-events-auto">
+        <div onClick={() => setMostraAdd(false)} className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
+          <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left pointer-events-auto">
             <button onClick={() => setMostraAdd(false)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90"><X size={18}/></button>
             <h3 className="text-xl font-[900] uppercase italic text-slate-950 mb-8">Novo Cadastro</h3>
             <form onSubmit={handleAddMembro} className="space-y-3">
@@ -264,10 +247,9 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => {
         </div>, document.body
       )}
 
-      {/* PORTAL: EXCLUSÃO */}
       {confirmaExclusao && createPortal(
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 text-center animate-in zoom-in-95 shadow-2xl">
+        <div onClick={() => setConfirmaExclusao(null)} className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
+          <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 text-center animate-in zoom-in-95 shadow-2xl">
             <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6"><Trash2 size={32}/></div>
             <h3 className="text-lg font-black uppercase text-slate-950 tracking-tighter leading-tight">Remover Membro?</h3>
             <p className="text-slate-400 text-[10px] font-bold uppercase mt-2">Esta ação não poderá ser desfeita.</p>

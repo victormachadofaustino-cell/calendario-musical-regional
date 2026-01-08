@@ -4,7 +4,7 @@ import { db } from '../firebaseConfig';
 import { collection, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { 
   MapPin, Clock, Calendar, Navigation, X, Edit3, Send, Plus, Trash2, 
-  MessageCircle, ChevronRight
+  MessageCircle, ChevronRight, Share2
 } from 'lucide-react';
 import Feedback from './Feedback';
 
@@ -19,8 +19,6 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => {
 
   const [feedback, setFeedback] = useState(null);
   const [sugestaoAberta, setSugestaoAberta] = useState(null);
-  const [mapaSeletor, setMapaSeletor] = useState(null);
-  const [wappSeletor, setWappSeletor] = useState(null);
   const [confirmaExclusao, setConfirmaExclusao] = useState(null);
   const [mostraAdd, setMostraAdd] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -38,29 +36,24 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => {
     return normalizarTexto(user.cidade) === normalizarTexto(e.sede);
   };
 
-  const abrirMapa = (app, local, sede) => {
+  // Navegação direta via Google Maps (Simplificado conforme solicitado)
+  const abrirGoogleMaps = (local, sede) => {
     const coords = buscarCoordenadas(sede, local);
-    let destino;
-    
-    if (app === 'google') {
-      destino = coords ? `${coords.lat},${coords.lon}` : encodeURIComponent(`CCB ${local} ${sede}`);
-      window.open(`https://www.google.com/maps/search/?api=1&query=${destino}`, '_blank');
-    } else {
-      if (coords) {
-        window.open(`https://waze.com/ul?ll=${coords.lat},${coords.lon}&navigate=yes`, '_blank');
-      } else {
-        destino = encodeURIComponent(`CCB ${local} ${sede}`);
-        window.open(`https://waze.com/ul?q=${destino}&navigate=yes`, '_blank');
-      }
-    }
-    setMapaSeletor(null);
+    const destino = coords ? `${coords.lat},${coords.lon}` : encodeURIComponent(`CCB ${local} ${sede}`);
+    window.open(`https://www.google.com/maps/search/?api=1&query=${destino}`, '_blank');
   };
 
-  const abrirWapp = (tipo, e) => {
-    const msg = `*CCB Jundiaí - Ensaio Regional*\n📍 ${e.sede} (${e.local})\n📅 ${e.dia}/${e.mes} às ${e.hora}\n🗓️ ${e.weekday}`;
-    const base = tipo === 'business' ? 'https://wa.me/' : 'https://api.whatsapp.com/send?text=';
-    window.open(`${base}${encodeURIComponent(msg)}`, '_blank');
-    setWappSeletor(null);
+  // Compartilhamento nativo (Resolve conflito Business vs Standard)
+  const compartilharRegional = async (e) => {
+    const texto = `*CCB Jundiaí - Ensaio Regional*\n📍 ${e.sede} (${e.local})\n📅 ${e.dia}/${e.mes} às ${e.hora}\n🗓️ ${e.weekday}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Ensaio Regional CCB', text: texto });
+      } catch (err) { console.log("Erro ao compartilhar", err); }
+    } else {
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, '_blank');
+    }
   };
 
   const handleAddRegional = async (e) => {
@@ -190,52 +183,18 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => {
               </div>
 
               <div className="grid grid-cols-2 gap-2 mt-2">
-                <button onClick={() => setWappSeletor(e)} className="bg-white/10 text-emerald-500 p-4 rounded-2xl active:scale-90 flex justify-center items-center shadow-sm border border-white/5"><MessageCircle size={18} /></button>
-                <button onClick={() => setMapaSeletor(e)} className="bg-amber-500 text-slate-950 p-4 rounded-2xl active:scale-90 flex justify-center items-center shadow-lg"><MapPin size={18} /></button>
+                <button onClick={() => compartilharRegional(e)} className="bg-white/10 text-emerald-500 p-4 rounded-2xl active:scale-90 flex justify-center items-center shadow-sm border border-white/5"><Share2 size={18} /></button>
+                <button onClick={() => abrirGoogleMaps(e.local, e.sede)} className="bg-amber-500 text-slate-950 p-4 rounded-2xl active:scale-90 flex justify-center items-center shadow-lg"><MapPin size={18} /></button>
               </div>
             </div>
           ))
         )}
       </div>
 
-      {/* MODAL SELETOR WHATSAPP */}
-      {wappSeletor && createPortal(
-        <div className="fixed inset-0 z-[3000] flex items-end justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative animate-in slide-in-from-bottom-10 text-left">
-            <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950 mb-6 leading-tight">Compartilhar via...</h3>
-            <div className="grid grid-cols-1 gap-3">
-              <button onClick={() => abrirWapp('standard', wappSeletor)} className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl flex items-center gap-4 active:scale-95 text-left shadow-sm">
-                <div className="p-3 bg-emerald-100 text-emerald-600 rounded-xl"><MessageCircle size={20} /></div>
-                <span className="text-[12px] font-[900] uppercase text-slate-950">WhatsApp Padrão</span>
-              </button>
-              <button onClick={() => abrirWapp('business', wappSeletor)} className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl flex items-center gap-4 active:scale-95 text-left shadow-sm">
-                <div className="p-3 bg-emerald-600 text-white rounded-xl"><MessageCircle size={20} /></div>
-                <span className="text-[12px] font-[900] uppercase text-slate-950">WhatsApp Business</span>
-              </button>
-            </div>
-            <button onClick={() => setWappSeletor(null)} className="w-full mt-6 py-2 text-slate-400 text-[10px] font-black uppercase text-center">Cancelar</button>
-          </div>
-        </div>, document.body
-      )}
-
-      {/* MODAL SELETOR MAPA */}
-      {mapaSeletor && createPortal(
-        <div className="fixed inset-0 z-[2000] flex items-end justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative animate-in slide-in-from-bottom-10 text-left">
-            <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950 mb-6">Navegar para...</h3>
-            <div className="grid grid-cols-1 gap-3">
-              <button onClick={() => abrirMapa('google', mapaSeletor.local, mapaSeletor.sede)} className="w-full bg-slate-50 p-5 rounded-2xl flex items-center gap-4 active:scale-95 border border-slate-100"><Navigation size={20} className="text-blue-500" /><span className="text-[12px] font-black uppercase text-slate-950">Google Maps</span></button>
-              <button onClick={() => abrirMapa('waze', mapaSeletor.local, mapaSeletor.sede)} className="w-full bg-slate-50 p-5 rounded-2xl flex items-center gap-4 active:scale-95 border border-slate-100"><Navigation size={20} className="text-teal-500" /><span className="text-[12px] font-black uppercase text-slate-950">Waze</span></button>
-            </div>
-            <button onClick={() => setMapaSeletor(null)} className="w-full mt-6 py-2 text-slate-400 text-[10px] font-black uppercase text-center">Cancelar</button>
-          </div>
-        </div>, document.body
-      )}
-
-      {/* MODAL EDITAR/ADD */}
+      {/* MODAL EDITAR/ADD (Com clique fora para fechar) */}
       {(sugestaoAberta || mostraAdd) && createPortal(
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
-          <div className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left pointer-events-auto">
+        <div onClick={() => { setSugestaoAberta(null); setMostraAdd(false); }} className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
+          <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left pointer-events-auto">
             <button onClick={() => { setSugestaoAberta(null); setMostraAdd(false); }} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90"><X size={18}/></button>
             <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950 leading-none">
               {mostraAdd ? 'Novo Regional' : (isMaster ? 'Editar Regional' : 'Sugestão')}
@@ -263,10 +222,10 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => {
         </div>, document.body
       )}
 
-      {/* CONFIRMA EXCLUSÃO */}
+      {/* CONFIRMA EXCLUSÃO (Com clique fora para fechar) */}
       {confirmaExclusao && createPortal(
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-center">
+        <div onClick={() => setConfirmaExclusao(null)} className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
+          <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-center">
             <Trash2 size={32} className="mx-auto text-red-500 mb-4"/>
             <h3 className="text-lg font-[900] uppercase italic tracking-tighter text-slate-950 leading-tight">Remover Regional?</h3>
             <div className="flex flex-col gap-2 mt-6">

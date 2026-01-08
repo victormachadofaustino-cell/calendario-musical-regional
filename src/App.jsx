@@ -1,7 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { signOut } from 'firebase/auth';
-import { auth } from './firebaseConfig';
-import { LayoutGrid, Music, Users, Info, ArrowLeft, User, LogOut, Lock } from 'lucide-react';
+import { auth, db } from './firebaseConfig';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { 
+  LayoutGrid, Music, Users, Info, ArrowLeft, User, LogOut, Lock,
+  BookOpen, CalendarDays
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Hooks Personalizados
@@ -19,6 +23,7 @@ import Login from './components/Login';
 import PainelMaster from './components/PainelMaster'; 
 import ListaOficial from './components/ListaOficial';
 import Dashboard from './components/Dashboard';
+import Tickets from './components/Tickets';
 
 function App() {
   const [modulo, setModulo] = useState('hub');
@@ -27,15 +32,14 @@ function App() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showPainelMaster, setShowPainelMaster] = useState(false);
   const [direcao, setDirecao] = useState(0);
+  const [ticketsCount, setTicketsCount] = useState(0);
 
-  // Consumo dos Hooks - pendenciasCount monitora o banco em tempo real através do useAuth
   const { user, userData, pendenciasCount } = useAuth();
   const { todosEnsaios, ensaiosRegionaisData, encarregadosData, examinadorasData, loading } = useFirestoreData();
 
   const touchStartX = useRef(null);
   const touchEndX = useRef(null);
 
-  // Módulos disponíveis para navegação
   const ORDEM_MODULOS = ['hub', 'locais', 'regionais', 'comissao', 'avisos', 'dashboard'];
 
   const TITULOS_MODULOS = {
@@ -46,6 +50,23 @@ function App() {
     'avisos': { p1: 'Infos', p2: 'Importantes' },
     'dashboard': { p1: 'Status', p2: 'Analítico' }
   };
+
+  useEffect(() => {
+    if (userData?.nivel !== 'master') { setTicketsCount(0); return; }
+    const q = query(collection(db, "feedback_usuarios"), where("status", "==", "pendente"));
+    const unsub = onSnapshot(q, (snap) => setTicketsCount(snap.size));
+    return () => unsub();
+  }, [userData]);
+
+  useEffect(() => {
+    if (!user) {
+      const paginasRestritas = ['dashboard'];
+      if (paginasRestritas.includes(modulo) || showPainelMaster) {
+        setModulo('hub');
+        setShowPainelMaster(false);
+      }
+    }
+  }, [user, modulo, showPainelMaster]);
 
   const variacoesPagina = {
     initial: (direcao) => ({ opacity: 0, x: direcao > 0 ? 100 : -100 }),
@@ -66,11 +87,13 @@ function App() {
     const distanciaX = touchStartX.current - touchEndX.current;
     const indexAtual = ORDEM_MODULOS.indexOf(modulo);
     
-    // Swipe logic - Ignora se estiver no dashboard ou avisos por causa de tabelas/scroll
+    // Desativa swipe em telas de scroll longo ou mapa
     if (modulo === 'dashboard' || modulo === 'avisos') return;
 
-    if (distanciaX > 70 && indexAtual < ORDEM_MODULOS.indexOf('dashboard') - 1) {
-      mudarModulo(ORDEM_MODULOS[indexAtual + 1]);
+    if (distanciaX > 70 && indexAtual < ORDEM_MODULOS.length - 1) {
+      const proximo = ORDEM_MODULOS[indexAtual + 1];
+      if (proximo === 'dashboard' && !user) return;
+      mudarModulo(proximo);
     } else if (distanciaX < -70 && indexAtual > 0) {
       mudarModulo(ORDEM_MODULOS[indexAtual - 1]);
     }
@@ -80,7 +103,7 @@ function App() {
   if (showSplash) return <CapaEntrada aoEntrar={() => setShowSplash(false)} />;
 
   return (
-    <div className="min-h-screen bg-[#F1F5F9] flex flex-col relative overflow-x-hidden" 
+    <div className="min-h-screen bg-[#F1F5F9] flex flex-col relative overflow-x-hidden"
          onTouchStart={(e) => touchStartX.current = e.targetTouches[0].clientX}
          onTouchMove={(e) => touchEndX.current = e.targetTouches[0].clientX}
          onTouchEnd={aoFinalizarToque}>
@@ -100,9 +123,7 @@ function App() {
                 <span className="font-medium text-slate-400 italic ml-1.5">{TITULOS_MODULOS[modulo].p2}</span>
               </motion.h1>
             </AnimatePresence>
-            <span className="text-slate-950 text-[8px] font-black uppercase tracking-[0.4em] mt-2">
-              Calendário Musical
-            </span>
+            <span className="text-slate-950 text-[8px] font-black uppercase tracking-[0.4em] mt-2">Calendário Musical</span>
           </div>
           <div className="flex items-center gap-2">
             {modulo !== 'hub' && (
@@ -113,10 +134,9 @@ function App() {
                       className={`p-3 rounded-2xl transition-all shadow-lg ${user ? (userData?.nivel === 'master' ? 'bg-amber-500' : 'bg-blue-600') : 'bg-slate-950'} text-white`}>
                 {user ? <User size={18} /> : <Lock size={18} />}
               </button>
-
-              {pendenciasCount > 0 && userData?.nivel === 'master' && (
+              {(pendenciasCount + ticketsCount > 0) && userData?.nivel === 'master' && (
                 <span className="absolute -top-1 -left-1 w-5 h-5 bg-orange-600 border-2 border-white rounded-full flex items-center justify-center text-[9px] font-black text-white animate-bounce shadow-md">
-                  {pendenciasCount}
+                  {pendenciasCount + ticketsCount}
                 </span>
               )}
             </div>
@@ -126,78 +146,67 @@ function App() {
       </header>
 
       {showLoginModal && <Login aoFechar={() => setShowLoginModal(false)} />}
-      
-      {showPainelMaster && (
-        <PainelMaster 
-          aoFechar={() => setShowPainelMaster(false)} 
-          userLogado={userData || { nome: 'Carregando...', nivel: 'comum' }} 
-        />
-      )}
+      {showPainelMaster && <PainelMaster aoFechar={() => setShowPainelMaster(false)} userLogado={userData} />}
 
       <main className="flex-grow flex flex-col max-w-md mx-auto w-full relative pb-12 overflow-hidden">
         <AnimatePresence mode="wait" custom={direcao}>
-          <motion.div
-            key={modulo}
+          <motion.div 
+            key={modulo} 
             custom={direcao}
             variants={variacoesPagina}
-            initial="initial"
-            animate="animate"
-            exit="exit"
+            initial="initial" 
+            animate="animate" 
+            exit="exit" 
             transition={{ type: "spring", stiffness: 260, damping: 25 }}
             className="w-full h-full"
           >
             {modulo === 'hub' && (
               <div className="w-full py-2">
-                <Summary 
-                  todosEnsaios={todosEnsaios} 
-                  ensaiosRegionais={ensaiosRegionaisData} 
-                  aoVerMais={(d) => {setDiaFiltro(d); mudarModulo('locais');}} 
-                  aoAbrirDashboard={() => mudarModulo('dashboard')}
-                  cidadeUsuario={userData?.cidade}
-                  user={userData} 
-                  pendenciasCount={pendenciasCount}
-                />
+                <Summary todosEnsaios={todosEnsaios} ensaiosRegionais={ensaiosRegionaisData} aoVerMais={(d) => {setDiaFiltro(d); mudarModulo('locais');}} aoAbrirDashboard={() => mudarModulo('dashboard')} cidadeUsuario={userData?.cidade} user={userData} pendenciasCount={pendenciasCount} />
                 
-                <div className="px-6 grid grid-cols-2 gap-3 w-full mt-4">
-                  <button onClick={() => mudarModulo('locais')} className="bg-white p-6 rounded-[2.2rem] shadow-md border border-slate-200 flex flex-col items-center justify-center gap-4 active:scale-95 text-slate-950">
-                    <LayoutGrid size={28} />
-                    <span className="text-[9px] font-black uppercase tracking-[0.2em]">Locais</span>
-                  </button>
-                  <button onClick={() => mudarModulo('regionais')} className="bg-white p-6 rounded-[2.2rem] shadow-md border border-slate-200 flex flex-col items-center justify-center gap-4 active:scale-95 text-slate-950">
-                    <Music size={28} />
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Regionais</span>
-                  </button>
-                  <button onClick={() => mudarModulo('comissao')} className="bg-white p-6 rounded-[2.2rem] shadow-md border border-slate-200 flex flex-col items-center justify-center gap-4 active:scale-95 text-slate-950">
-                    <Users size={28} />
-                    <span className="text-[9px] font-black uppercase tracking-[0.2em]">Contatos</span>
-                  </button>
-                  <button onClick={() => mudarModulo('avisos')} className="bg-white p-6 rounded-[2.2rem] shadow-md border border-slate-200 flex flex-col items-center justify-center gap-4 active:scale-95 text-slate-950">
-                    <Info size={28} />
-                    <span className="text-[9px] font-black uppercase tracking-[0.2em]">Infos</span>
-                  </button>
-                  <div className="col-span-2"><ListaOficial /></div>
+                <div className="px-6 space-y-3 mt-4">
+                  <div className="grid grid-cols-2 gap-3 w-full">
+                    <button onClick={() => mudarModulo('locais')} className="bg-white p-6 rounded-[2.2rem] shadow-md border border-slate-200 flex flex-col items-center justify-center gap-4 active:scale-95 text-slate-950">
+                      <LayoutGrid size={28} /><span className="text-[9px] font-black uppercase tracking-[0.2em]">Ensaios Locais</span>
+                    </button>
+                    <button onClick={() => mudarModulo('regionais')} className="bg-white p-6 rounded-[2.2rem] shadow-md border border-slate-200 flex flex-col items-center justify-center gap-4 active:scale-95 text-slate-950">
+                      <Music size={28} /><span className="text-[9px] font-black uppercase tracking-[0.2em]">Regionais</span>
+                    </button>
+                    <button onClick={() => mudarModulo('comissao')} className="bg-white p-6 rounded-[2.2rem] shadow-md border border-slate-200 flex flex-col items-center justify-center gap-4 active:scale-95 text-slate-950">
+                      <Users size={28} /><span className="text-[9px] font-black uppercase tracking-[0.2em]">Contatos</span>
+                    </button>
+                    <button onClick={() => mudarModulo('avisos')} className="bg-white p-6 rounded-[2.2rem] shadow-md border border-slate-200 flex flex-col items-center justify-center gap-4 active:scale-95 text-slate-950">
+                      <Info size={28} /><span className="text-[9px] font-black uppercase tracking-[0.2em]">Infos</span>
+                    </button>
+
+                    <div className="bg-white/50 p-6 rounded-[2.2rem] border border-slate-200 flex flex-col items-center justify-center gap-4 relative overflow-hidden opacity-80">
+                      <div className="absolute top-3 right-5 bg-amber-100 text-amber-600 text-[6px] font-black px-2 py-0.5 rounded-full uppercase italic">Em Breve</div>
+                      <BookOpen size={28} className="text-slate-300" />
+                      <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Dias de Culto</span>
+                    </div>
+
+                    {user && (
+                      <div className="bg-white/50 p-6 rounded-[2.2rem] border border-slate-200 flex flex-col items-center justify-center gap-4 relative overflow-hidden opacity-80">
+                        <div className="absolute top-3 right-5 bg-blue-100 text-blue-600 text-[6px] font-black px-2 py-0.5 rounded-full uppercase italic">Em Breve</div>
+                        <CalendarDays size={28} className="text-slate-300" />
+                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Reuniões</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="px-0 mt-4 w-full"><ListaOficial /></div>
                 </div>
               </div>
             )}
-
             {modulo === 'locais' && <EnsaiosLocais todosEnsaios={todosEnsaios} diaFiltro={diaFiltro} loading={loading} user={userData} />}
             {modulo === 'regionais' && <EnsaiosRegionais ensaiosRegionais={ensaiosRegionaisData} loading={loading} user={userData} />}
             {modulo === 'comissao' && <Comissao encarregados={encarregadosData} examinadoras={examinadorasData} loading={loading} user={userData} />}
             {modulo === 'avisos' && <Avisos user={userData} />}
-            
-            {modulo === 'dashboard' && (
-              <Dashboard 
-                todosEnsaios={todosEnsaios}
-                ensaiosRegionais={ensaiosRegionaisData}
-                examinadoras={examinadorasData}
-                encarregados={encarregadosData}
-                user={userData}
-              />
-            )}
+            {modulo === 'dashboard' && <Dashboard todosEnsaios={todosEnsaios} ensaiosRegionais={ensaiosRegionaisData} examinadoras={examinadorasData} encarregados={encarregadosData} user={userData} />}
           </motion.div>
         </AnimatePresence>
       </main>
-      <footer className="mt-auto py-6 opacity-30 text-center text-[7px] font-black uppercase tracking-[0.6em]">Regional Jundiaí • 2026</footer>
+
+      <Tickets user={user} userData={userData} moduloAtual={modulo} titulosModulos={TITULOS_MODULOS} />
     </div>
   );
 }

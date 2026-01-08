@@ -1,13 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, Clock, MapPin, Star, ChevronRight, Navigation, User, BarChart3, MessageCircle } from 'lucide-react';
+import { Calendar, Clock, MapPin, Star, ChevronRight, Navigation, User, BarChart3, MessageCircle, Share2 } from 'lucide-react';
 
 // Importação das constantes e funções de precisão geográfica
 import { buscarCoordenadas, normalizarTexto } from '../constants/comuns';
 
 const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, aoAbrirDashboard, cidadeUsuario, user, pendenciasCount }) => {
   const [mapaSeletor, setMapaSeletor] = useState(null);
-  const [wappSeletor, setWappSeletor] = useState(null);
 
   // 1. Lógica para identificar a Ocorrência da Semana (1ª a Últ)
   const getFiltroPrecisoHoje = () => {
@@ -52,31 +51,32 @@ const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, aoAbrirDashboard, 
   const totalRestante = ensaiosHoje.length - 2;
   const proximoRegional = getProximoRegionalValido();
 
-  const abrirMapaInteligente = (app, localidade, cidade) => {
+  // Função simplificada para Google Maps direto
+  const abrirGoogleMaps = (localidade, cidade) => {
     const coords = buscarCoordenadas(cidade, localidade);
-    let destino;
-    if (app === 'google') {
-      destino = coords ? `${coords.lat},${coords.lon}` : encodeURIComponent(`CCB ${localidade} ${cidade}`);
-      window.open(`https://www.google.com/maps/search/?api=1&query=${destino}`, '_blank');
-    } else {
-      if (coords) {
-        window.open(`https://waze.com/ul?ll=${coords.lat},${coords.lon}&navigate=yes`, '_blank');
-      } else {
-        destino = encodeURIComponent(`CCB ${localidade} ${cidade}`);
-        window.open(`https://waze.com/ul?q=${destino}&navigate=yes`, '_blank');
-      }
-    }
-    setMapaSeletor(null);
+    const destino = coords ? `${coords.lat},${coords.lon}` : encodeURIComponent(`CCB ${localidade} ${cidade}`);
+    window.open(`https://www.google.com/maps/search/?api=1&query=${destino}`, '_blank');
   };
 
-  const abrirWappInteligente = (tipo, e, isRegional = false) => {
-    const msg = isRegional 
+  // Função que usa a API de compartilhamento nativa do celular (Resolve conflito Wapp Business)
+  const compartilharEnsaio = async (e, isRegional = false) => {
+    const texto = isRegional 
       ? `*CCB Jundiaí - Ensaio Regional*\n📍 ${e.sede} (${e.local})\n📅 ${e.dia}/${e.mes} às ${e.hora}\n🗓️ ${e.weekday}`
       : `*CCB Jundiaí - Ensaio Local*\n📍 ${e.localidade} (${e.cidade})\n🗓️ ${e.dia} às ${e.hora}\n👤 ${e.encarregado || 'N/I'}`;
-    
-    const base = tipo === 'business' ? 'https://wa.me/' : 'https://api.whatsapp.com/send?text=';
-    window.open(`${base}${encodeURIComponent(msg)}`, '_blank');
-    setWappSeletor(null);
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Convite Ensaio CCB',
+          text: texto
+        });
+      } catch (err) {
+        console.log("Erro ao compartilhar:", err);
+      }
+    } else {
+      // Fallback para WhatsApp padrão caso o navegador não suporte Web Share
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, '_blank');
+    }
   };
 
   return (
@@ -121,8 +121,12 @@ const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, aoAbrirDashboard, 
           <div className="flex items-center gap-2 pt-4 border-t border-white/5">
             <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-white italic"><Clock size={14} className="text-amber-500" /> {proximoRegional.hora}</div>
             <div className="ml-auto flex gap-2">
-              <button onClick={() => setWappSeletor({item: proximoRegional, regional: true})} className="bg-white/10 text-emerald-500 p-3 rounded-xl border border-white/5 active:scale-90"><MessageCircle size={18} /></button>
-              <button onClick={() => setMapaSeletor({local: proximoRegional.local, sede: proximoRegional.sede})} className="bg-white/10 text-amber-500 p-3 rounded-xl border border-white/5 active:scale-90"><MapPin size={18} /></button>
+              <button onClick={() => compartilharEnsaio(proximoRegional, true)} className="bg-white/10 text-emerald-500 p-3 rounded-xl border border-white/5 active:scale-90">
+                <Share2 size={18} />
+              </button>
+              <button onClick={() => abrirGoogleMaps(proximoRegional.local, proximoRegional.sede)} className="bg-white/10 text-amber-500 p-3 rounded-xl border border-white/5 active:scale-90">
+                <MapPin size={18} />
+              </button>
             </div>
           </div>
         </div>
@@ -160,8 +164,12 @@ const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, aoAbrirDashboard, 
                     <div className="absolute top-5 right-5 flex flex-col items-end gap-2">
                        <div className="bg-slate-950 text-white text-[8px] font-black px-2.5 py-2.5 rounded-lg uppercase shadow-sm">{s.dia.split(' ')[1]}</div>
                        <div className="flex gap-2">
-                          <button onClick={() => setWappSeletor({item: s, regional: false})} className={`p-2.5 rounded-xl active:scale-90 ${isDaMinhaCidade ? 'bg-amber-100 text-emerald-600' : 'bg-slate-50 text-emerald-600'}`}><MessageCircle size={16} /></button>
-                          <button onClick={() => setMapaSeletor({local: s.localidade, sede: s.cidade})} className={`p-2.5 rounded-xl active:scale-90 ${isDaMinhaCidade ? 'bg-amber-100 text-amber-600' : 'bg-slate-50 text-slate-400'}`}><MapPin size={16} /></button>
+                          <button onClick={() => compartilharEnsaio(s, false)} className={`p-2.5 rounded-xl active:scale-90 ${isDaMinhaCidade ? 'bg-amber-100 text-emerald-600' : 'bg-slate-50 text-emerald-600'}`}>
+                            <Share2 size={16} />
+                          </button>
+                          <button onClick={() => abrirGoogleMaps(s.localidade, s.cidade)} className={`p-2.5 rounded-xl active:scale-90 ${isDaMinhaCidade ? 'bg-amber-100 text-amber-600' : 'bg-slate-50 text-slate-400'}`}>
+                            <MapPin size={16} />
+                          </button>
                        </div>
                     </div>
                   </div>
@@ -171,46 +179,6 @@ const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, aoAbrirDashboard, 
           )}
         </div>
       </div>
-
-      {/* SELETOR DE WHATSAPP (PADRONIZADO) */}
-      {wappSeletor && createPortal(
-        <div className="fixed inset-0 z-[3000] flex items-end justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative animate-in slide-in-from-bottom-10 text-left">
-            <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950 mb-6 leading-tight">Compartilhar via...</h3>
-            <div className="grid grid-cols-1 gap-3">
-              <button onClick={() => abrirWappInteligente('standard', wappSeletor.item, wappSeletor.regional)} className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl flex items-center gap-4 active:scale-95 text-left">
-                <div className="p-3 bg-emerald-100 text-emerald-600 rounded-xl"><MessageCircle size={20} /></div>
-                <span className="text-[12px] font-[900] uppercase text-slate-950">WhatsApp Padrão</span>
-              </button>
-              <button onClick={() => abrirWappInteligente('business', wappSeletor.item, wappSeletor.regional)} className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl flex items-center gap-4 active:scale-95 text-left">
-                <div className="p-3 bg-emerald-600 text-white rounded-xl"><MessageCircle size={20} /></div>
-                <span className="text-[12px] font-[900] uppercase text-slate-950">WhatsApp Business</span>
-              </button>
-            </div>
-            <button onClick={() => setWappSeletor(null)} className="w-full mt-6 py-2 text-slate-400 text-[10px] font-black uppercase text-center">Cancelar</button>
-          </div>
-        </div>, document.body
-      )}
-
-      {/* SELETOR DE MAPA (PADRONIZADO) */}
-      {mapaSeletor && createPortal(
-        <div className="fixed inset-0 z-[3000] flex items-end justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative animate-in slide-in-from-bottom-10 text-left">
-            <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950 mb-6">Navegar para...</h3>
-            <div className="grid grid-cols-1 gap-3">
-              <button onClick={() => abrirMapaInteligente('google', mapaSeletor.local, mapaSeletor.sede)} className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl flex items-center gap-4 active:scale-95 text-left">
-                <div className="p-3 bg-blue-100 text-blue-500 rounded-xl"><Navigation size={20} /></div>
-                <span className="text-[12px] font-[900] uppercase text-slate-950">Google Maps</span>
-              </button>
-              <button onClick={() => abrirMapaInteligente('waze', mapaSeletor.local, mapaSeletor.sede)} className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl flex items-center gap-4 active:scale-95 text-left">
-                <div className="p-3 bg-teal-100 text-teal-500 rounded-xl"><Navigation size={20} /></div>
-                <span className="text-[12px] font-[900] uppercase text-slate-950">Waze</span>
-              </button>
-            </div>
-            <button onClick={() => setMapaSeletor(null)} className="w-full mt-6 py-2 text-slate-400 text-[10px] font-black uppercase text-center">Cancelar</button>
-          </div>
-        </div>, document.body
-      )}
     </div>
   );
 };
