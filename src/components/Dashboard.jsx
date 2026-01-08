@@ -173,7 +173,15 @@ const Dashboard = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarregados,
       </div>
 
       <div className="space-y-3">
-        <div className="flex justify-between items-center px-2"><h4 className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{indexGraficoRegional === 0 ? 'Regionais Mensais (Total)' : 'Regionais Mensais por Cidade'}</h4><div className="flex gap-1"><button onClick={() => setIndexGraficoRegional(0)} className={`w-1.5 h-1.5 rounded-full ${indexGraficoRegional === 0 ? 'bg-amber-500' : 'bg-slate-200'}`} /><button onClick={() => setIndexGraficoRegional(1)} className={`w-1.5 h-1.5 rounded-full ${indexGraficoRegional === 1 ? 'bg-amber-500' : 'bg-slate-200'}`} /></div></div>
+        <div className="flex justify-between items-center px-2">
+          <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-widest">
+            {indexGraficoRegional === 0 ? 'Ensaios Regionais por Mês' : 'Ensaios Regionais por cidade'}
+          </h4>
+          <div className="flex gap-1">
+            <button onClick={() => setIndexGraficoRegional(0)} className={`w-1.5 h-1.5 rounded-full ${indexGraficoRegional === 0 ? 'bg-amber-500' : 'bg-slate-200'}`} />
+            <button onClick={() => setIndexGraficoRegional(1)} className={`w-1.5 h-1.5 rounded-full ${indexGraficoRegional === 1 ? 'bg-amber-500' : 'bg-slate-200'}`} />
+          </div>
+        </div>
         <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm min-h-[300px] overflow-hidden relative">
           <AnimatePresence mode="wait">
             <motion.div key={indexGraficoRegional} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={(e, info) => { if (info.offset.x < -40 && indexGraficoRegional < 1) setIndexGraficoRegional(1); if (info.offset.x > 40 && indexGraficoRegional > 0) setIndexGraficoRegional(0); }} className="cursor-grab active:cursor-grabbing">
@@ -184,15 +192,17 @@ const Dashboard = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarregados,
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: '900' }} />
                     <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '15px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase' }} />
                     {indexGraficoRegional === 0 ? (
-                      <Bar dataKey="total" fill="#0F172A" radius={[6, 6, 0, 0]} barSize={20}>
-                        {dadosGraficoRegionais.map((entry, index) => <Cell key={index} fill={entry.total > 1 ? "#3B82F6" : "#0F172A"} />)}
+                      <Bar dataKey="total" fill="#3B82F6" radius={[6, 6, 0, 0]} barSize={20}>
+                        {dadosGraficoRegionais.map((entry, index) => <Cell key={index} fill="#3B82F6" />)}
                       </Bar>
                     ) : (
-                      CIDADES_LISTA.map((cidade, idx) => (
-                        <Bar key={cidade} dataKey={cidade} stackId="a" fill={CORES_PALETA[idx % CORES_PALETA.length]} radius={idx === 0 ? [0,0,0,0] : [4, 4, 0, 0]} />
-                      ))
+                      <>
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: '7px', fontWeight: '900', textTransform: 'uppercase', paddingTop: '10px', bottom: -10 }} />
+                        {CIDADES_LISTA.map((cidade, idx) => (
+                          <Bar key={cidade} dataKey={cidade} stackId="a" fill={CORES_PALETA[idx % CORES_PALETA.length]} radius={idx === 0 ? [0,0,0,0] : [4, 4, 0, 0]} />
+                        ))}
+                      </>
                     )}
-                    {indexGraficoRegional === 1 && <Legend iconType="circle" wrapperStyle={{ fontSize: '7px', fontWeight: '900', textTransform: 'uppercase', paddingTop: '20px' }} />}
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -207,7 +217,13 @@ const Dashboard = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarregados,
       </div>
 
       <div className="space-y-3">
-        <div className="flex justify-between items-center px-2 text-[9px] font-black uppercase text-slate-400 tracking-widest"><h4>Comissão e Examinadoras</h4><div className="flex gap-1"><button onClick={() => setIndexComissao(0)} className={`w-1.5 h-1.5 rounded-full ${indexComissao === 0 ? 'bg-purple-600' : 'bg-slate-200'}`} /><button onClick={() => setIndexComissao(1)} className={`w-1.5 h-1.5 rounded-full ${indexComissao === 1 ? 'bg-purple-600' : 'bg-slate-200'}`} /></div></div>
+        <div className="flex justify-between items-center px-2 text-[9px] font-black uppercase text-slate-400 tracking-widest">
+          <h4>{indexComissao === 0 ? 'Encarregados Regionais' : 'Examinadoras'}</h4>
+          <div className="flex gap-1">
+            <button onClick={() => setIndexComissao(0)} className={`w-1.5 h-1.5 rounded-full ${indexComissao === 0 ? 'bg-purple-600' : 'bg-slate-200'}`} />
+            <button onClick={() => setIndexComissao(1)} className={`w-1.5 h-1.5 rounded-full ${indexComissao === 1 ? 'bg-purple-600' : 'bg-slate-200'}`} />
+          </div>
+        </div>
         <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden min-h-[220px]"><AnimatePresence mode="wait"><motion.div key={indexComissao} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={(e, info) => { if (info.offset.x < -40 && indexComissao < 1) setIndexComissao(1); if (info.offset.x > 40 && indexComissao > 0) setIndexComissao(0); }} className="space-y-3 cursor-grab h-[180px] overflow-y-auto no-scrollbar">{(cidadeSelecionada === 'REGIONAL' ? CIDADES_LISTA : [cidadeSelecionada]).map(c => ({ c, val: indexComissao === 0 ? encarregados.filter(e => normalizarTexto(e.city) === normalizarTexto(c)).length : examinadoras.filter(e => normalizarTexto(e.city) === normalizarTexto(c)).length })).sort((a, b) => b.val - a.val).map(item => item.val > 0 ? (<ChartBarItem key={item.c} label={item.c} valor={item.val} max={maxComissao} color={indexComissao === 0 ? "bg-purple-600" : "bg-pink-600"} />) : null)}</motion.div></AnimatePresence></div>
       </div>
 
@@ -217,7 +233,7 @@ const Dashboard = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarregados,
       </div>
 
       <div className="space-y-4">
-        <h4 className="text-[10px] font-black uppercase text-slate-950 italic px-2">Matriz Horária</h4>
+        <h4 className="text-[10px] font-black uppercase text-slate-950 italic px-2">Matriz por Horário</h4>
         <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden"><div className="overflow-x-auto no-scrollbar"><table className="w-full border-collapse"><thead className="bg-slate-50 text-[8px] font-black uppercase text-slate-400"><tr><th className="p-4 text-left sticky left-0 bg-slate-50 z-10 border-r border-slate-100">Local</th>{matrizes.horas.map(h => <th key={h} className="p-4 text-slate-950 whitespace-nowrap">{h}</th>)}<th className="p-4 text-purple-600 bg-purple-50/30">Total</th></tr></thead><tbody className="divide-y divide-slate-50 text-[9px] font-black uppercase">{matrizes.mHora.grade.map(linha => (<tr key={linha.nome}><td className="p-4 text-slate-600 truncate max-w-[110px] sticky left-0 bg-white z-10 border-r border-slate-100">{linha.nome}</td>{linha.colunas.map((col, idx) => (<td key={idx} className="p-2 text-center">{col.qtd > 0 ? <button onClick={() => setDetalheModal({ titulo: `${linha.nome} às ${col.label}`, itens: col.itens })} className="w-8 h-8 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center mx-auto active:scale-90 border border-purple-100">{col.qtd}</button> : <span className="text-slate-100">-</span>}</td>))}<td className="p-2 text-center text-purple-700 bg-purple-50/10"><button onClick={() => setDetalheModal({ titulo: `Acumulado: ${linha.nome}`, itens: linha.totalLinhaItens })} className="w-full font-black py-2 active:scale-90">{linha.totalLinha}</button></td></tr>))}<tr className="bg-purple-50/10 text-purple-700 font-black"><td className="p-4 sticky left-0 bg-purple-50/30 z-10 border-r border-slate-100">Total Hora</td>{matrizes.mHora.totalizadoresColunas.map((total, i) => (<td key={i} className="p-2 text-center"><button onClick={() => setDetalheModal({ titulo: `Ensaios às ${matrizes.horas[i]}`, itens: total.itens })} className="w-full font-black py-2 active:scale-90">{total.qtd}</button></td>))}<td className="p-2 text-center text-purple-900 bg-purple-100"><button onClick={() => setDetalheModal({ titulo: 'Total Geral Horário', itens: matrizes.mHora.totalGeralItens })} className="w-full font-black py-2 active:scale-90">{matrizes.mHora.totalGeral}</button></td></tr></tbody></table></div></div>
       </div>
 
