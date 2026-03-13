@@ -1,133 +1,135 @@
-import React, { useState, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import { db } from '../firebaseConfig';
-import { collection, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import React, { useState, useMemo } from 'react'; // Importa as ferramentas essenciais do React para o funcionamento da tela.
+import { createPortal } from 'react-dom'; // Ferramenta que permite criar janelas flutuantes (modais) sobrepostas ao App.
+import { db } from '../firebaseConfig'; // Importa a configuração de conexão com o banco de dados.
+import { collection, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore'; // Ferramentas para criar, atualizar e deletar dados no banco.
 import { 
   MapPin, Clock, Calendar, Navigation, X, Edit3, Send, Plus, Trash2, 
   MessageCircle, ChevronRight, Share2
-} from 'lucide-react';
-import Feedback from './Feedback';
+} from 'lucide-react'; // Biblioteca de ícones para os botões e indicações visuais.
+import Feedback from './Feedback'; // Componente que mostra alertas de sucesso ou erro.
 
-// Importações centralizadas
-import { CIDADES_LISTA } from '../constants/cidades';
-import { normalizarTexto, buscarCoordenadas } from '../constants/comuns';
+// Importações centralizadas e motor de permissões
+import { CIDADES_LISTA } from '../constants/cidades'; // Lista oficial de cidades da regional.
+import { normalizarTexto, buscarCoordenadas } from '../constants/comuns'; // Funções para padronizar textos e buscar mapas.
+import { isMaster, podeVerBotoesDeGestao, obterNivelAcesso } from '../constants/permissions'; // Motor que decide o que cada usuário pode fazer.
 
-const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => {
-  const [filtroCidade, setFiltroCidade] = useState('Todas');
-  const [filtroMes, setFiltroMes] = useState('Todos');
-  const [semanaSelecionada, setSemanaSelecionada] = useState('');
+const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => { // Início do componente que exibe a agenda regional.
+  const [filtroCidade, setFiltroCidade] = useState('Todas'); // Guarda a cidade escolhida no filtro.
+  const [filtroMes, setFiltroMes] = useState('Todos'); // Guarda o mês escolhido no filtro.
+  const [semanaSelecionada, setSemanaSelecionada] = useState(''); // Guarda a semana (1ª, 2ª, etc.) escolhida no filtro.
 
-  const [feedback, setFeedback] = useState(null);
-  const [sugestaoAberta, setSugestaoAberta] = useState(null);
-  const [confirmaExclusao, setConfirmaExclusao] = useState(null);
-  const [mostraAdd, setMostraAdd] = useState(false);
-  const [enviando, setEnviando] = useState(false);
+  const [feedback, setFeedback] = useState(null); // Controla a mensagem de aviso no topo da tela.
+  const [sugestaoAberta, setSugestaoAberta] = useState(null); // Guarda os dados do ensaio regional que está sendo editado.
+  const [confirmaExclusao, setConfirmaExclusao] = useState(null); // Guarda qual regional o usuário clicou para remover.
+  const [mostraAdd, setMostraAdd] = useState(false); // Controla a exibição do formulário de criação de novo regional.
+  const [enviando, setEnviando] = useState(false); // Impede envios duplicados enquanto o banco processa.
 
-  const [novoReg, setNovoReg] = useState({ sede: 'JUNDIAÍ', local: '', mes: 'Janeiro', dia: '', weekday: '', hora: '' });
-  const [formSugestao, setFormSugestao] = useState({ local: '', dia: '', mes: '', weekday: '', hora: '' });
+  const [novoReg, setNovoReg] = useState({ sede: 'JUNDIAÍ', local: '', mes: 'Janeiro', dia: '', weekday: '', hora: '' }); // Estado do formulário de criação.
+  const [formSugestao, setFormSugestao] = useState({ local: '', dia: '', mes: '', weekday: '', hora: '' }); // Estado do formulário de edição.
 
-  const isMaster = user?.nivel === 'master';
-  const SEMANAS = ["1ª", "2ª", "3ª", "4ª", "Últ"];
-  const MESES_LISTA = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const nivelAcesso = obterNivelAcesso(user); // Identifica o cargo do usuário (Master, Editor ou Visitante).
+  const SEMANAS = ["1ª", "2ª", "3ª", "4ª", "Últ"]; // Opções de semana para o filtro.
+  const MESES_LISTA = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']; // Lista oficial de meses.
 
-  const podeEditarRegional = (e) => {
-    if (isMaster) return true;
-    if (!user?.cidade || !e.sede) return false;
-    return normalizarTexto(user.cidade) === normalizarTexto(e.sede);
+  const abrirGoogleMaps = (local, sede) => { // Função para abrir o GPS.
+    const coords = buscarCoordenadas(sede, local); // Busca coordenadas automáticas.
+    const destino = coords ? `${coords.lat},${coords.lon}` : encodeURIComponent(`CCB ${local} ${sede}`); // Define o destino no mapa.
+    window.open(`http://googleusercontent.com/maps.google.com/2{destino}`, '_blank'); // Abre o trajeto.
   };
 
-  // Navegação direta via Google Maps (Simplificado conforme solicitado)
-  const abrirGoogleMaps = (local, sede) => {
-    const coords = buscarCoordenadas(sede, local);
-    const destino = coords ? `${coords.lat},${coords.lon}` : encodeURIComponent(`CCB ${local} ${sede}`);
-    window.open(`https://www.google.com/maps/search/?api=1&query=${destino}`, '_blank');
-  };
-
-  // Compartilhamento nativo (Resolve conflito Business vs Standard)
-  const compartilharRegional = async (e) => {
-    const texto = `*CCB Jundiaí - Ensaio Regional*\n📍 ${e.sede} (${e.local})\n📅 ${e.dia}/${e.mes} às ${e.hora}\n🗓️ ${e.weekday}`;
-
-    if (navigator.share) {
+  const compartilharRegional = async (e) => { // Função para compartilhar o convite do regional.
+    const texto = `*CCB Jundiaí - Ensaio Regional*\n📍 Sede: ${e.sede} (${e.local})\n📅 Data: ${e.dia}/${e.mes} às ${e.hora}\n🗓️ ${e.weekday}`; // Formata o texto.
+    if (navigator.share) { // Tenta usar o compartilhamento nativo do celular.
       try {
-        await navigator.share({ title: 'Ensaio Regional CCB', text: texto });
+        await navigator.share({ title: 'Ensaio Regional CCB', text: texto }); // Abre o seletor de apps do sistema.
       } catch (err) { console.log("Erro ao compartilhar", err); }
     } else {
-      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, '_blank');
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, '_blank'); // Abre o WhatsApp direto se o sistema não suportar.
     }
   };
 
-  const handleAddRegional = async (e) => {
-    e.preventDefault();
-    setEnviando(true);
+  const handleAddRegional = async (e) => { // Lógica para adicionar um novo regional.
+    e.preventDefault(); // Evita recarregar a página.
+    setEnviando(true); // Bloqueia o botão.
     try {
-      const payload = { ...novoReg, dia: Number(novoReg.dia), sede: novoReg.sede.toUpperCase() };
-      await addDoc(collection(db, "ensaios_regionais"), payload);
-      setFeedback({ msg: "Regional adicionado!", tipo: 'sucesso' });
-      setMostraAdd(false);
-      setNovoReg({ sede: 'JUNDIAÍ', local: '', mes: 'Janeiro', dia: '', weekday: '', hora: '' });
-    } catch (err) { setFeedback({ msg: "Erro ao salvar", tipo: 'erro' }); } 
-    finally { setEnviando(false); }
+      const payload = { ...novoReg, dia: Number(novoReg.dia), sede: novoReg.sede.toUpperCase() }; // Prepara os dados.
+      if (isMaster(user)) { // Se for Master, salva no banco oficial imediatamente.
+        await addDoc(collection(db, "ensaios_regionais"), payload);
+        setFeedback({ msg: "Regional adicionado com sucesso!", tipo: 'sucesso' });
+      } else { // Se for editor de cidade, manda para aprovação.
+        await addDoc(collection(db, "sugestoes_pendentes"), {
+          tipo: 'regional_criacao', sede: payload.sede, localidade: payload.local,
+          dadosSugeridos: payload, solicitanteNome: user.nome, status: 'pendente', dataSolicitacao: new Date()
+        });
+        setFeedback({ msg: "Regional enviado para aprovação do Master!", tipo: 'sucesso' });
+      }
+      setMostraAdd(false); // Fecha o modal.
+      setNovoReg({ sede: user?.cidade?.toUpperCase() || 'JUNDIAÍ', local: '', mes: 'Janeiro', dia: '', weekday: '', hora: '' }); // Limpa o formulário.
+    } catch (err) { setFeedback({ msg: "Erro ao tentar salvar", tipo: 'erro' }); } 
+    finally { setEnviando(false); } // Libera o botão.
   };
 
-  const enviarSugestao = async (ev) => {
+  const enviarSugestaoOuEdicao = async (ev) => { // Lógica para o botão salvar do modal de edição.
     ev.preventDefault();
     setEnviando(true);
     try {
-      const dadosSaneados = { ...formSugestao, dia: Number(formSugestao.dia) };
-      if (isMaster) {
+      const dadosSaneados = { ...formSugestao, dia: Number(formSugestao.dia) }; // Garante que o dia seja número.
+      if (isMaster(user)) { // Master edita direto.
         await updateDoc(doc(db, "ensaios_regionais", sugestaoAberta.id), dadosSaneados);
-        setFeedback({ msg: "Banco atualizado!", tipo: 'sucesso' });
-      } else {
+        setFeedback({ msg: "Dados atualizados no banco oficial!", tipo: 'sucesso' });
+      } else { // Editor envia sugestão.
         await addDoc(collection(db, "sugestoes_pendentes"), {
-          ensaioId: sugestaoAberta.id, localidade: sugestaoAberta.sede, cidade: sugestaoAberta.sede, tipo: 'regional',
+          ensaioId: sugestaoAberta.id, localidade: sugestaoAberta.local, cidade: sugestaoAberta.sede, tipo: 'regional',
           dadosAntigos: { ...sugestaoAberta }, dadosSugeridos: dadosSaneados, solicitanteNome: user.nome, status: 'pendente', dataSolicitacao: new Date()
         });
-        setFeedback({ msg: "Sugestão enviada!", tipo: 'sucesso' });
+        setFeedback({ msg: "Sugestão de alteração enviada!", tipo: 'sucesso' });
       }
-      setSugestaoAberta(null);
-    } catch (error) { setFeedback({ msg: "Erro no envio", tipo: 'erro' }); }
+      setSugestaoAberta(null); // Fecha o modal.
+    } catch (error) { setFeedback({ msg: "Falha ao processar sugestão", tipo: 'erro' }); }
     finally { setEnviando(false); }
   };
 
-  const handleExcluirDefinitivo = async () => {
+  const handleExcluirOuSugerir = async () => { // Lógica inteligente para remoção de regionais.
     try {
-      await deleteDoc(doc(db, "ensaios_regionais", confirmaExclusao.id));
-      setFeedback({ msg: "Removido!", tipo: 'sucesso' });
-      setConfirmaExclusao(null);
-    } catch (err) { setFeedback({ msg: "Erro ao excluir", tipo: 'erro' }); }
+      if (isMaster(user)) { // Master apaga do sistema agora.
+        await deleteDoc(doc(db, "ensaios_regionais", confirmaExclusao.id));
+        setFeedback({ msg: "Regional removido permanentemente!", tipo: 'sucesso' });
+      } else { // Editor solicita a remoção.
+        await addDoc(collection(db, "sugestoes_pendentes"), {
+          ensaioId: confirmaExclusao.id, tipo: 'regional_exclusao', cidade: confirmaExclusao.sede, localidade: confirmaExclusao.local,
+          dadosAntigos: confirmaExclusao, solicitanteNome: user.nome, status: 'pendente', dataSolicitacao: new Date()
+        });
+        setFeedback({ msg: "Pedido de remoção enviado ao Master!", tipo: 'sucesso' });
+      }
+      setConfirmaExclusao(null); // Fecha o aviso.
+    } catch (err) { setFeedback({ msg: "Erro ao tentar remover", tipo: 'erro' }); }
   };
 
-  const regionaisFiltrados = useMemo(() => {
+  const regionaisFiltrados = useMemo(() => { // Organiza a agenda regional por data.
     const ordemMeses = { "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8, "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12 };
-    
     return ensaiosRegionais.filter(e => {
       const sedeNormalizada = normalizarTexto(e.sede);
-      const pertenceARegional = CIDADES_LISTA.some(c => normalizarTexto(c) === sedeNormalizada);
-      if (!pertenceARegional) return false;
-
       const matchCidade = filtroCidade === 'Todas' || sedeNormalizada === normalizarTexto(filtroCidade);
       const matchMes = filtroMes === 'Todos' || e.mes === filtroMes;
-      
       let matchSemana = true;
       if (semanaSelecionada) {
         const termoBusca = semanaSelecionada.replace(/\D/g, "");
         matchSemana = e.weekday && (e.weekday.includes(termoBusca) || e.weekday.includes(semanaSelecionada));
       }
-
       return matchCidade && matchMes && matchSemana;
     }).sort((a, b) => (ordemMeses[a.mes] - ordemMeses[b.mes]) || Number(a.dia) - Number(b.dia));
   }, [ensaiosRegionais, filtroCidade, filtroMes, semanaSelecionada]);
 
-  if (loading) return <div className="p-10 text-center font-black uppercase text-slate-400 animate-pulse text-[10px] tracking-widest">Sincronizando Banco...</div>;
+  if (loading) return <div className="p-10 text-center font-black uppercase text-slate-400 animate-pulse text-[10px] tracking-widest">Sincronizando Banco...</div>; // Carregamento inicial.
 
-  return (
+  return ( // Corpo visual da tela.
     <div className="flex flex-col animate-in text-left pb-24">
       {feedback && <Feedback mensagem={feedback.msg} tipo={feedback.tipo} aoFechar={() => setFeedback(null)} />}
       
-      {isMaster && (
+      {podeVerBotoesDeGestao(user, user?.cidade) && ( // Exibe botão de (+) apenas se for Master ou Editor da sua cidade.
         <div className="px-6 pt-4">
-          <button onClick={() => setMostraAdd(true)} className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 shadow-xl active:scale-95 transition-all">
-            <Plus size={16}/> Novo Regional
+          <button onClick={() => { setNovoReg(prev => ({...prev, sede: isMaster(user) ? 'JUNDIAÍ' : user.cidade.toUpperCase()})); setMostraAdd(true); }} className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 shadow-xl active:scale-95 transition-all">
+            <Plus size={16}/> Novo Regional em {isMaster(user) ? 'Qualquer Cidade' : user.cidade}
           </button>
         </div>
       )}
@@ -167,10 +169,10 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => {
                     {e.dia} {e.mes.substring(0, 3)}
                   </div>
                   <div className="flex gap-1">
-                    {podeEditarRegional(e) && (
+                    {podeVerBotoesDeGestao(user, e.sede) && ( // Só mostra botões de gestão se o motor de permissões autorizar.
                       <button onClick={() => { setSugestaoAberta(e); setFormSugestao({ ...e }); }} className="text-amber-500 bg-amber-500/10 p-2.5 rounded-xl active:scale-90 border border-amber-500/20"><Edit3 size={16} /></button>
                     )}
-                    {isMaster && (
+                    {podeVerBotoesDeGestao(user, e.sede) && ( // Só mostra botões de gestão se o motor de permissões autorizar.
                       <button onClick={() => setConfirmaExclusao(e)} className="text-red-500 bg-red-500/10 p-2.5 rounded-xl active:scale-90 border border-red-500/20"><Trash2 size={16} /></button>
                     )}
                   </div>
@@ -191,18 +193,18 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => {
         )}
       </div>
 
-      {/* MODAL EDITAR/ADD (Com clique fora para fechar) */}
+      {/* MODAL EDITAR/ADD */}
       {(sugestaoAberta || mostraAdd) && createPortal(
         <div onClick={() => { setSugestaoAberta(null); setMostraAdd(false); }} className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
           <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left pointer-events-auto">
             <button onClick={() => { setSugestaoAberta(null); setMostraAdd(false); }} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90"><X size={18}/></button>
             <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950 leading-none">
-              {mostraAdd ? 'Novo Regional' : (isMaster ? 'Editar Regional' : 'Sugestão')}
+              {mostraAdd ? 'Novo Regional' : (isMaster(user) ? 'Editar Regional' : 'Sugerir Edição')}
             </h3>
-            <form onSubmit={mostraAdd ? handleAddRegional : enviarSugestao} className="space-y-3 mt-6">
-              <select value={mostraAdd ? novoReg.sede : (formSugestao.sede || sugestaoAberta?.sede)} 
+            <form onSubmit={mostraAdd ? handleAddRegional : enviarSugestaoOuEdicao} className="space-y-3 mt-6">
+              <select disabled={!isMaster(user)} value={mostraAdd ? novoReg.sede : (formSugestao.sede || sugestaoAberta?.sede)} 
                       onChange={ev => mostraAdd ? setNovoReg({...novoReg, sede: ev.target.value}) : setFormSugestao({...formSugestao, sede: ev.target.value})} 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold outline-none uppercase">
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold outline-none uppercase disabled:opacity-50">
                 {CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               <input type="text" placeholder="Comum/Local" value={mostraAdd ? novoReg.local : formSugestao.local} onChange={ev => mostraAdd ? setNovoReg({...novoReg, local: ev.target.value}) : setFormSugestao({...formSugestao, local: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold uppercase outline-none" />
@@ -215,21 +217,22 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => {
               </select>
               <input type="text" placeholder="Semana (Ex: 3º Domingo)" value={mostraAdd ? novoReg.weekday : formSugestao.weekday} onChange={ev => mostraAdd ? setNovoReg({...novoReg, weekday: ev.target.value}) : setFormSugestao({...formSugestao, weekday: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold uppercase outline-none" />
               <button disabled={enviando} type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest flex justify-center items-center gap-2 active:scale-95 shadow-xl transition-all mt-4">
-                <Send size={16}/> {enviando ? 'Processando...' : (isMaster ? 'Salvar no Banco' : 'Enviar Sugestão')}
+                <Send size={16}/> {enviando ? 'Processando...' : (isMaster(user) ? 'Salvar no Banco' : 'Enviar Sugestão')}
               </button>
             </form>
           </div>
         </div>, document.body
       )}
 
-      {/* CONFIRMA EXCLUSÃO (Com clique fora para fechar) */}
+      {/* CONFIRMA EXCLUSÃO */}
       {confirmaExclusao && createPortal(
         <div onClick={() => setConfirmaExclusao(null)} className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
           <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-center">
             <Trash2 size={32} className="mx-auto text-red-500 mb-4"/>
-            <h3 className="text-lg font-[900] uppercase italic tracking-tighter text-slate-950 leading-tight">Remover Regional?</h3>
+            <h3 className="text-lg font-[900] uppercase italic tracking-tighter text-slate-950 leading-tight">Remover {confirmaExclusao.sede}?</h3>
+            <p className="text-[9px] font-bold text-slate-400 uppercase mt-2">{isMaster(user) ? "A exclusão será permanente no banco oficial." : "Sua solicitação será enviada para análise do Master."}</p>
             <div className="flex flex-col gap-2 mt-6">
-              <button onClick={handleExcluirDefinitivo} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-lg">Confirmar</button>
+              <button onClick={handleExcluirOuSugerir} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-lg">{isMaster(user) ? "Excluir Agora" : "Pedir Exclusão"}</button>
               <button onClick={() => setConfirmaExclusao(null)} className="w-full bg-slate-100 text-slate-400 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest">Cancelar</button>
             </div>
           </div>
@@ -239,4 +242,4 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => {
   );
 };
 
-export default EnsaiosRegionais;
+export default EnsaiosRegionais; // Exporta o componente de agenda regional.

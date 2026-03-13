@@ -1,0 +1,16 @@
+{
+  "short_name": "Musical",
+  "name": "Calendário Musical Regional",
+  "icons": [
+    {
+      "src": "assets/Logo_oficial_CCB.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#020617",
+  "background_color": "#F1F5F9"
+}

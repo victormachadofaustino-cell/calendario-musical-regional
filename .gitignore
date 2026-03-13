@@ -1,24 +1,38 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# Logs [Explicação: Pasta onde o sistema guarda registros de eventos]
+logs [Explicação: Ignora a pasta de registros gerais de sistema]
+*.log [Explicação: Ignora qualquer arquivo individual que termine em .log]
+npm-debug.log* [Explicação: Ignora registros de erros do instalador de pacotes NPM]
+yarn-debug.log* [Explicação: Ignora registros de erros do instalador de pacotes Yarn]
+yarn-error.log* [Explicação: Ignora erros específicos gerados pelo Yarn]
+pnpm-debug.log* [Explicação: Ignora registros de erros do instalador de pacotes PNPM]
+lerna-debug.log* [Explicação: Ignora registros do sistema de gerenciamento Lerna]
 
+# Dependências e Compilação [Explicação: Arquivos pesados gerados automaticamente]
+node_modules [Explicação: Pasta com bibliotecas instaladas; nunca deve ir ao Git por ser muito pesada]
+dist [Explicação: Pasta com o código final otimizado que vai para a Vercel]
+dist-ssr [Explicação: Versão do código otimizada para servidores específicos]
+*.local [Explicação: Arquivos de configuração que funcionam apenas no seu computador]
+
+# Editor directories and files [Explicação: Configurações automáticas do seu editor de código]
+.vscode/* [Explicação: Ignora configurações personalizadas do seu VS Code]
+!.vscode/extensions.json [Explicação: Abre uma exceção para salvar a lista de extensões recomendadas]
+.idea [Explicação: Pasta de configurações para editores da família IntelliJ]
+.DS_Store [Explicação: Arquivo invisível criado pelo sistema macOS em todas as pastas]
+*.suo [Explicação: Arquivos de solução de programas do Visual Studio]
+*.ntvs* [Explicação: Ferramentas específicas para Node.js no Visual Studio]
+*.njsproj [Explicação: Arquivos de projeto do Visual Studio]
+*.sln [Explicação: Arquivos de solução de software]
+*.sw? [Explicação: Arquivos temporários de editores de texto]
+
+# Segurança e Credenciais (Chaves de Serviço) [Explicação: Proteção máxima para não vazar acesso ao banco]
+service-account.json [Explicação: Impede que a chave mestra do Firebase vá para a internet]
+ServiceAccountKey.json [Explicação: Protege especificamente o arquivo de chave de administrador]
+*-key.json [Explicação: Protege qualquer arquivo que termine com o sufixo "key.json"]
+credentials.json [Explicação: Nome comum dado a arquivos de senhas e acessos]
+
+# ARQUIVOS ESPECÍFICOS SOLICITADOS [Explicação: Blindagem de backups e documentos de projeto]
+backup_profundo_firestore.json [Explicação: Ignora o backup completo dos dados do banco para evitar vazamento]
+projeto_completo.txt [Explicação: Ignora o arquivo com toda a lógica do código para proteção intelectual]
+.env [Explicação: Arquivo que guarda senhas secretas do sistema]
+.env.local [Explicação: Arquivo de senhas que funciona apenas localmente]
 node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?

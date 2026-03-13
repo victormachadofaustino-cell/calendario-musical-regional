@@ -1,68 +1,71 @@
-import React, { useState, useEffect } from 'react';
-import { db } from '../firebaseConfig';
-import { collection, query, orderBy, onSnapshot, doc, deleteDoc, addDoc, updateDoc } from 'firebase/firestore';
-import { Loader2, BookOpen, CheckCircle2, XCircle, Clock, Plus, Trash2, Edit3, X, Send } from 'lucide-react';
-import { createPortal } from 'react-dom';
-import Feedback from './Feedback';
-import OrquestraDiagrama from './OrquestraDiagrama';
+import React, { useState, useEffect } from 'react'; // Importa o coração do React para gerenciar o estado da tela.
+import { db } from '../firebaseConfig'; // Importa a conexão com o banco de dados Firebase.
+import { collection, query, orderBy, onSnapshot, doc, deleteDoc, addDoc, updateDoc } from 'firebase/firestore'; // Ferramentas do banco para ler, criar, editar e apagar dados.
+import { Loader2, BookOpen, CheckCircle2, XCircle, Clock, Plus, Trash2, Edit3, X, Send } from 'lucide-react'; // Ícones que aparecem nos botões e avisos.
+import { createPortal } from 'react-dom'; // Ferramenta que desenha as janelas de edição por cima de todo o aplicativo.
+import Feedback from './Feedback'; // Componente que mostra balões de "Sucesso" ou "Erro" no topo.
+import OrquestraDiagrama from './OrquestraDiagrama'; // Componente visual que desenha o posicionamento da orquestra.
 
-const Avisos = ({ user }) => {
-  const [avisos, setAvisos] = useState([]);
-  const [linhasTabela, setLinhasTabela] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [feedback, setFeedback] = useState(null);
-  const [editando, setEditando] = useState(null);
-  const [editandoLinha, setEditandoLinha] = useState(null);
-  const [mostraAdd, setMostraAdd] = useState(false);
-  const [enviando, setEnviando] = useState(false);
+// Importação das Novas Regras de Permissões
+import { isMaster } from '../constants/permissions'; // Importa a regra que identifica se o usuário tem poder de Mestre.
 
-  const isMaster = user?.nivel === 'master';
-  const [formAviso, setFormAviso] = useState({ titulo: '', conteudo: '', ordem: 1, prioridade: 'normal', categoria: 'Instrução', tituloSecundario: '', cordas: '', madeiras: '', metais: '' });
-  const [formLinha, setFormLinha] = useState({ s: '', o: true, n: true, rb: true, rnb: true, me: true });
+const Avisos = ({ user }) => { // Início do componente de avisos, recebendo os dados do usuário logado.
+  const [avisos, setAvisos] = useState([]); // Lista que guarda todos os textos de avisos vindos do banco.
+  const [linhasTabela, setLinhasTabela] = useState([]); // Lista que guarda as linhas da tabela de permissões musicais.
+  const [loading, setLoading] = useState(true); // Controla a tela de "Carregando" enquanto os dados não chegam.
+  const [feedback, setFeedback] = useState(null); // Controla a mensagem de confirmação após salvar algo.
+  const [editando, setEditando] = useState(null); // Guarda o aviso específico que está sendo alterado agora.
+  const [editandoLinha, setEditandoLinha] = useState(null); // Guarda a linha da tabela que está sendo alterada agora.
+  const [mostraAdd, setMostraAdd] = useState(false); // Controla se a janelinha de "Novo Aviso" deve aparecer.
+  const [enviando, setEnviando] = useState(false); // Trava o botão de salvar para evitar cliques duplicados.
 
-  useEffect(() => {
-    const unsubAvisos = onSnapshot(query(collection(db, "avisos"), orderBy("ordem", "asc")), (snap) => {
-      setAvisos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
+  const masterLogado = isMaster(user); // Usa o motor de regras para confirmar se quem está vendo é o administrador.
+  const [formAviso, setFormAviso] = useState({ titulo: '', conteudo: '', ordem: 1, prioridade: 'normal', categoria: 'Instrução', tituloSecundario: '', cordas: '', madeiras: '', metais: '' }); // Campos do formulário de avisos.
+  const [formLinha, setFormLinha] = useState({ s: '', o: true, n: true, rb: true, rnb: true, me: true }); // Campos do formulário da tabela.
+
+  useEffect(() => { // Lógica que roda assim que a tela abre para buscar as informações no banco de dados.
+    const unsubAvisos = onSnapshot(query(collection(db, "avisos"), orderBy("ordem", "asc")), (snap) => { // Ouve a gaveta de "avisos" em tempo real.
+      setAvisos(snap.docs.map(d => ({ id: d.id, ...d.data() }))); // Transforma os dados do banco em uma lista legível pelo código.
+      setLoading(false); // Avisa que terminou de carregar a primeira parte.
     });
-    const unsubTabela = onSnapshot(query(collection(db, "tabela_permissoes"), orderBy("ordem", "asc")), (snap) => {
-      setLinhasTabela(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    const unsubTabela = onSnapshot(query(collection(db, "tabela_permissoes"), orderBy("ordem", "asc")), (snap) => { // Ouve a gaveta da "tabela" em tempo real.
+      setLinhasTabela(snap.docs.map(d => ({ id: d.id, ...d.data() }))); // Atualiza a lista da tabela na tela.
     });
-    return () => { unsubAvisos(); unsubTabela(); };
-  }, []);
+    return () => { unsubAvisos(); unsubTabela(); }; // Para de vigiar o banco quando o usuário sai desta tela.
+  }, []); // O colchete vazio indica que isso só roda uma vez na abertura.
 
-  const handleSalvarAviso = async (e) => {
-    e.preventDefault();
-    setEnviando(true);
+  const handleSalvarAviso = async (e) => { // Lógica para gravar um aviso novo ou alterado no banco.
+    e.preventDefault(); // Impede que a página recarregue ao clicar no botão.
+    setEnviando(true); // Bloqueia o botão para segurança.
     try {
-      if (editando) await updateDoc(doc(db, "avisos", editando.id), formAviso);
-      else await addDoc(collection(db, "avisos"), { ...formAviso, data: new Date() });
-      setFeedback({ msg: "Atualizado!", tipo: 'sucesso' });
-      setMostraAdd(false);
-    } catch (err) { setFeedback({ msg: "Erro", tipo: 'erro' }); }
-    finally { setEnviando(false); }
+      if (editando) await updateDoc(doc(db, "avisos", editando.id), formAviso); // Se já existia, apenas atualiza o texto.
+      else await addDoc(collection(db, "avisos"), { ...formAviso, data: new Date() }); // Se for novo, cria um documento do zero.
+      setFeedback({ msg: "Atualizado com sucesso!", tipo: 'sucesso' }); // Mostra aviso de sucesso.
+      setMostraAdd(false); // Fecha a janela de edição.
+    } catch (err) { setFeedback({ msg: "Erro ao gravar dados", tipo: 'erro' }); } // Mostra aviso de erro em caso de falha.
+    finally { setEnviando(false); } // Libera o botão novamente.
   };
 
-  const handleSalvarLinha = async (e) => {
-    e.preventDefault();
-    setEnviando(true);
+  const handleSalvarLinha = async (e) => { // Lógica para salvar alterações na tabela de permissões.
+    e.preventDefault(); // Impede o recarregamento da página.
+    setEnviando(true); // Bloqueia cliques extras.
     try {
-      await updateDoc(doc(db, "tabela_permissoes", editandoLinha.id), formLinha);
-      setFeedback({ msg: "Tabela salva!", tipo: 'sucesso' });
-      setEditandoLinha(null);
-    } catch (err) { setFeedback({ msg: "Erro ao salvar", tipo: 'erro' }); }
-    finally { setEnviando(false); }
+      await updateDoc(doc(db, "tabela_permissoes", editandoLinha.id), formLinha); // Grava a nova configuração da linha no banco.
+      setFeedback({ msg: "Configuração da Tabela salva!", tipo: 'sucesso' }); // Mostra sucesso.
+      setEditandoLinha(null); // Fecha a janela de edição da linha.
+    } catch (err) { setFeedback({ msg: "Erro ao salvar tabela", tipo: 'erro' }); } // Mostra falha.
+    finally { setEnviando(false); } // Libera o botão.
   };
 
-  const fecharModal = () => { setMostraAdd(false); setEditando(null); };
+  const fecharModal = () => { setMostraAdd(false); setEditando(null); }; // Função simples para fechar as janelas de edição.
 
-  if (loading) return <div className="flex flex-col items-center justify-center py-20 gap-4"><Loader2 className="animate-spin text-slate-300" size={32} /></div>;
+  if (loading) return <div className="flex flex-col items-center justify-center py-20 gap-4"><Loader2 className="animate-spin text-slate-300" size={32} /></div>; // Mostra ícone de girar enquanto carrega.
 
-  const cabecalho = avisos.find(a => a.categoria === 'Cabecalho');
-  const instrucoes = avisos.filter(a => a.categoria === 'Instrução');
-  const diagramaMeta = avisos.find(a => a.categoria === 'Diagrama');
+  const cabecalho = avisos.find(a => a.categoria === 'Cabecalho'); // Separa o aviso principal que fica no topo.
+  const instrucoes = avisos.filter(a => a.categoria === 'Instrução'); // Separa a lista de orientações numeradas.
+  const diagramaMeta = avisos.find(a => a.categoria === 'Diagrama'); // Pega as informações de texto que alimentam o desenho da orquestra.
 
-  return (
+  return ( // Início da parte visual que o usuário vê.
     <div className="flex flex-col animate-in px-6 py-6 space-y-6 pb-24 text-left no-scrollbar relative">
       {feedback && <Feedback mensagem={feedback.msg} tipo={feedback.tipo} aoFechar={() => setFeedback(null)} />}
 
@@ -77,20 +80,20 @@ const Avisos = ({ user }) => {
             </div>
           </div>
         </div>
-        {isMaster && cabecalho && <button onClick={() => { setEditando(cabecalho); setFormAviso(cabecalho); setMostraAdd(true); }} className="absolute -top-2 -right-2 p-3 bg-amber-500 text-white rounded-full shadow-lg border-2 border-white active:scale-90"><Edit3 size={16}/></button>}
+        {masterLogado && cabecalho && <button onClick={() => { setEditando(cabecalho); setFormAviso(cabecalho); setMostraAdd(true); }} className="absolute -top-2 -right-2 p-3 bg-amber-500 text-white rounded-full shadow-lg border-2 border-white active:scale-90"><Edit3 size={16}/></button>}
       </div>
 
       {/* 2. ORIENTAÇÕES */}
       <div className="flex items-center justify-between gap-3">
         <div className="h-[1px] flex-grow bg-slate-200"></div><h3 className="text-slate-950 text-[10px] font-black uppercase tracking-[0.3em] whitespace-nowrap">Instruções</h3><div className="h-[1px] flex-grow bg-slate-200"></div>
-        {isMaster && <button onClick={() => { setEditando(null); setFormAviso({titulo:'', conteudo:'', ordem: instrucoes.length + 1, prioridade:'normal', categoria:'Instrução'}); setMostraAdd(true); }} className="bg-slate-950 text-white p-2 rounded-full active:scale-90"><Plus size={16}/></button>}
+        {masterLogado && <button onClick={() => { setEditando(null); setFormAviso({titulo:'', conteudo:'', ordem: instrucoes.length + 1, prioridade:'normal', categoria:'Instrução'}); setMostraAdd(true); }} className="bg-slate-950 text-white p-2 rounded-full active:scale-90"><Plus size={16}/></button>}
       </div>
       <div className="space-y-4">
         {instrucoes.map((aviso) => (
           <div key={aviso.id} className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex flex-col gap-4 relative">
             <div className="flex gap-4"><span className="text-2xl font-[900] italic text-slate-200 leading-none">{aviso.ordem}</span>
             <div className="flex flex-col gap-1 pr-16"><h4 className="text-slate-950 font-[900] text-[11px] uppercase tracking-wider">{aviso.titulo}</h4><p className="text-slate-500 text-[11px] font-bold leading-relaxed uppercase">{aviso.conteudo}</p></div></div>
-            {isMaster && <div className="absolute top-4 right-4 flex flex-col gap-2"><button onClick={() => { setEditando(aviso); setFormAviso(aviso); setMostraAdd(true); }} className="p-2.5 bg-amber-100 text-amber-600 rounded-xl active:scale-90"><Edit3 size={16}/></button><button onClick={() => deleteDoc(doc(db, "avisos", aviso.id))} className="p-2.5 bg-red-100 text-red-600 rounded-xl active:scale-90"><Trash2 size={16}/></button></div>}
+            {masterLogado && <div className="absolute top-4 right-4 flex flex-col gap-2"><button onClick={() => { setEditando(aviso); setFormAviso(aviso); setMostraAdd(true); }} className="p-2.5 bg-amber-100 text-amber-600 rounded-xl active:scale-90"><Edit3 size={16}/></button><button onClick={() => deleteDoc(doc(db, "avisos", aviso.id))} className="p-2.5 bg-red-100 text-red-600 rounded-xl active:scale-90"><Trash2 size={16}/></button></div>}
           </div>
         ))}
       </div>
@@ -99,7 +102,7 @@ const Avisos = ({ user }) => {
       <div className="flex items-center gap-3 pt-4"><div className="h-[1px] flex-grow bg-slate-200"></div><h3 className="text-slate-950 text-[10px] font-black uppercase tracking-[0.3em] whitespace-nowrap">Diagrama</h3><div className="h-[1px] flex-grow bg-slate-200"></div></div>
       <div className="relative">
         <OrquestraDiagrama dados={diagramaMeta} />
-        {isMaster && <button onClick={() => { setEditando(diagramaMeta); setFormAviso(diagramaMeta); setMostraAdd(true); }} className="absolute top-4 right-4 p-2.5 bg-amber-500 text-white rounded-full border-2 border-white active:scale-90"><Edit3 size={16}/></button>}
+        {masterLogado && <button onClick={() => { setEditando(diagramaMeta); setFormAviso(diagramaMeta); setMostraAdd(true); }} className="absolute top-4 right-4 p-2.5 bg-amber-500 text-white rounded-full border-2 border-white active:scale-90"><Edit3 size={16}/></button>}
       </div>
 
       {/* 4. TABELA OTIMIZADA DESIGN UI */}
@@ -122,7 +125,7 @@ const Avisos = ({ user }) => {
                     </div>
                   </th>
                 ))}
-                {isMaster && <th className="border-b-2 border-slate-950 p-2 bg-slate-950 text-white">#</th>}
+                {masterLogado && <th className="border-b-2 border-slate-950 p-2 bg-slate-950 text-white">#</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -145,7 +148,7 @@ const Avisos = ({ user }) => {
                       </div>
                     </td>
                   ))}
-                  {isMaster && (
+                  {masterLogado && (
                     <td className="p-2 text-center bg-inherit">
                       <button onClick={() => { setEditandoLinha(row); setFormLinha(row); }} className="text-amber-500 active:scale-90"><Edit3 size={14}/></button>
                     </td>
@@ -170,7 +173,7 @@ const Avisos = ({ user }) => {
         <span className="text-[7px] font-black uppercase tracking-[0.4em] text-center">Regional Jundiaí • Oficial</span>
       </div>
 
-      {/* MODAIS DE EDIÇÃO */}
+      {/* MODAIS DE EDIÇÃO (Desenha a janela de edição quando solicitada) */}
       {editandoLinha && createPortal(
         <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={() => setEditandoLinha(null)}></div>
@@ -219,4 +222,4 @@ const Avisos = ({ user }) => {
   );
 };
 
-export default Avisos;
+export default Avisos; // Exporta a tela de avisos e instruções para uso no aplicativo.
