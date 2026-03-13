@@ -101,7 +101,7 @@ const Login = ({ aoFechar }) => {
         
         <div className="mb-8 text-left">
           <h2 className="text-2xl font-[900] uppercase italic tracking-tighter text-slate-950 leading-none">
-            {modo === 'login' ? 'Gestão Musical' : 'Solicitar Acesso'}
+            {modo === 'login' ? 'Login e Cadastro' : 'Solicitar Acesso'}
           </h2>
           <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-2">
             {modo === 'login' ? 'Área restrita a colaboradores' : 'Cadastre-se para análise do Master'}
