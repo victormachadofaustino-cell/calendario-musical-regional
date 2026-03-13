@@ -203,12 +203,14 @@ function App() { // Início da função principal que desenha o aplicativo.
                       <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Cultos</span>
                     </div>
 
-                    {/* BOTÃO DE REUNIÕES: Devolvido para o menu principal conforme solicitado (Badge Em Breve) */}
-                    <div className="bg-white/50 p-6 rounded-[2.2rem] border border-slate-200 flex flex-col items-center justify-center gap-4 relative overflow-hidden opacity-80 shadow-sm">
-                      <div className="absolute top-3 right-5 bg-blue-100 text-blue-600 text-[6px] font-black px-2 py-0.5 rounded-full uppercase italic">Em Breve</div>
-                      <CalendarDays size={28} className="text-slate-300" />
-                      <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Reuniões</span>
-                    </div>
+                    {/* CORREÇÃO APLICADA: O card de REUNIÕES agora está dentro de uma chave lógica. Ele só aparece se o usuário ('user') estiver logado. */}
+                    {user && ( 
+                      <div className="bg-white/50 p-6 rounded-[2.2rem] border border-slate-200 flex flex-col items-center justify-center gap-4 relative overflow-hidden opacity-80 shadow-sm animate-in fade-in">
+                        <div className="absolute top-3 right-5 bg-blue-100 text-blue-600 text-[6px] font-black px-2 py-0.5 rounded-full uppercase italic">Em Breve</div>
+                        <CalendarDays size={28} className="text-slate-300" />
+                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Reuniões</span>
+                      </div>
+                    )}
                   </div>
                   {/* Botão da Lista Oficial de Batismos */}
                   <div className="px-0 mt-4 w-full"><ListaOficial /></div>

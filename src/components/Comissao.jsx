@@ -70,28 +70,28 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => { 
   };
 
   const handleUpdateMembro = async (e) => { // Lógica para salvar alterações em contatos existentes.
-    e.preventDefault();
-    setEnviando(true);
+    e.preventDefault(); // Impede o recarregamento da página.
+    setEnviando(true); // Trava o botão para evitar múltiplos cliques.
     try {
-      const nomeColecao = aba === 'regionais' ? COLEC_REGIONAIS : COLEC_EXAMINADORAS;
-      const dadosUpdate = editandoMembro || sugestaoAberta; // Pega os dados de quem está sendo alterado.
-      const payload = { name: dadosUpdate.name, city: dadosUpdate.city, contact: dadosUpdate.contact };
+      const nomeColecao = aba === 'regionais' ? COLEC_REGIONAIS : COLEC_EXAMINADORAS; // Seleciona a coleção correta.
+      const dadosUpdate = editandoMembro || sugestaoAberta; // Identifica os dados que estão na tela de edição.
+      const payload = { name: dadosUpdate.name, city: dadosUpdate.city, contact: dadosUpdate.contact }; // Prepara o pacote de dados.
 
-      if (isMaster(user)) { // Master altera o banco na hora.
-        await updateDoc(doc(db, nomeColecao, dadosUpdate.id), payload);
-        setFeedback({ msg: "Contato atualizado!", tipo: 'sucesso' });
-      } else { // Editor manda para a fila de aprovação.
-        await addDoc(collection(db, "sugestoes_pendentes"), {
+      if (isMaster(user)) { // Se for o Master logado.
+        await updateDoc(doc(db, nomeColecao, dadosUpdate.id), payload); // Atualiza o banco de dados oficial na hora.
+        setFeedback({ msg: "Contato atualizado!", tipo: 'sucesso' }); // Aviso de sucesso.
+      } else { // Se for um Editor de cidade.
+        await addDoc(collection(db, "sugestoes_pendentes"), { // Envia o pedido para a fila do Master.
           ensaioId: dadosUpdate.id, localidade: dadosUpdate.city, cidade: dadosUpdate.city,
           tipo: aba === 'regionais' ? 'contato_regional' : 'contato_examinadora',
           dadosAntigos: { name: listaAtual.find(x => x.id === dadosUpdate.id)?.name, city: listaAtual.find(x => x.id === dadosUpdate.id)?.city || listaAtual.find(x => x.id === dadosUpdate.id)?.cidade, contact: listaAtual.find(x => x.id === dadosUpdate.id)?.contact },
           dadosSugeridos: payload, solicitanteNome: user.nome, status: 'pendente', dataSolicitacao: new Date()
         });
-        setFeedback({ msg: "Alteração enviada para análise!", tipo: 'sucesso' });
+        setFeedback({ msg: "Alteração enviada para análise!", tipo: 'sucesso' }); // Aviso de que o Master precisa aprovar.
       }
-      setEditandoMembro(null); setSugestaoAberta(null); // Fecha os modais.
-    } catch (err) { setFeedback({ msg: "Falha ao processar", tipo: 'erro' }); }
-    finally { setEnviando(false); }
+      setEditandoMembro(null); setSugestaoAberta(null); // Fecha a janela de edição.
+    } catch (err) { setFeedback({ msg: "Falha ao processar", tipo: 'erro' }); } // Aviso de falha técnica.
+    finally { setEnviando(false); } // Libera o botão.
   };
 
   const handleExcluirOuSugerir = async () => { // Lógica inteligente de remoção.
@@ -111,7 +111,6 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => { 
     } catch (err) { setFeedback({ msg: "Erro na exclusão", tipo: 'erro' }); }
   };
 
-  // Lógica de Filtro e Ordenação: Primeiro por Nome, depois por Cidade conforme solicitado.
   const filtrados = useMemo(() => { // Filtra a lista em tempo real enquanto o usuário digita.
     return listaAtual.filter(item => {
       const nomeMembro = item.name || "";
@@ -120,10 +119,8 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => { 
       const matchCidade = filtroCidade === 'Todas' || normalizarTexto(cidadeMembro) === normalizarTexto(filtroCidade);
       return matchBusca && matchCidade;
     }).sort((a, b) => {
-      // 1. Compara pelo Nome (Ordem Alfabética A-Z)
       const compNome = (a.name || "").localeCompare(b.name || "");
       if (compNome !== 0) return compNome;
-      // 2. Se o nome for igual, compara pela Cidade como desempate
       return (a.city || a.cidade || "").localeCompare(b.city || b.cidade || "");
     });
   }, [listaAtual, busca, filtroCidade]);
@@ -162,8 +159,9 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => { 
           <div key={item.id} className="bg-white rounded-[2.2rem] p-6 shadow-sm border border-slate-100 relative overflow-hidden transition-all">
             <div className="flex justify-between items-center mb-4 min-h-[80px]">
               <div className="flex flex-col text-left flex-1">
-                <span className="text-amber-500 text-[11px] font-[900] uppercase italic tracking-widest mb-1">{item.city || item.cidade}</span>
                 <h3 className="text-slate-950 text-base font-[900] tracking-tighter uppercase italic leading-tight pr-4">{item.name}</h3>
+                <span className="text-amber-500 text-[11px] font-[900] uppercase italic tracking-widest mt-1 mb-1">{item.city || item.cidade}</span>
+                
                 <button onClick={() => copiarParaClipboard(item.contact, item.id)} className="flex items-center gap-2 mt-3 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-100 w-fit group active:scale-95 transition-all shadow-sm">
                   <span className="text-slate-950 text-[12px] font-black tracking-widest">{item.contact}</span>
                   {copiadoId === item.id ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} className="text-slate-300" />}
@@ -195,7 +193,8 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => { 
             <h3 className="text-xl font-[900] uppercase italic text-slate-950 leading-none">{isMaster(user) ? 'Editar Membro' : 'Sugerir Edição'}</h3>
             <form onSubmit={handleUpdateMembro} className="space-y-4 mt-8">
               <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-1">Nome</span><input required type="text" value={isMaster(user) ? editandoMembro.name : sugestaoAberta.name} onChange={ev => isMaster(user) ? setEditandoMembro({...editandoMembro, name: ev.target.value}) : setSugestaoAberta({...sugestaoAberta, name: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 px-4 text-[11px] font-bold outline-none uppercase" /></div>
-              <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-1">Cidade</span><select disabled={!isMaster(user)} value={isMaster(user) ? editandoMembro.city : sugestaoAberta.city} onChange={ev => isMaster(user) ? setEditandoMembro({...editandoMembro, city: ev.target.value}) : setSugestaoAberta({...sugestaoAberta, city: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 px-4 text-[11px] font-bold outline-none disabled:opacity-50">{CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+              {/* CORREÇÃO: Campo de Cidade agora é editável para todos permitirem a transição de atendimento entre cidades. */}
+              <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-1">Cidade (Local de Atendimento)</span><select value={isMaster(user) ? editandoMembro.city : sugestaoAberta.city} onChange={ev => isMaster(user) ? setEditandoMembro({...editandoMembro, city: ev.target.value}) : setSugestaoAberta({...sugestaoAberta, city: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 px-4 text-[11px] font-bold outline-none">{CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
               <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-1">Telefone</span><input required type="text" value={isMaster(user) ? editandoMembro.contact : sugestaoAberta.contact} onChange={ev => isMaster(user) ? setEditandoMembro({...editandoMembro, contact: ev.target.value}) : setSugestaoAberta({...sugestaoAberta, contact: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 px-4 text-[11px] font-bold outline-none" /></div>
               <button disabled={enviando} type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] active:scale-95 shadow-xl transition-all flex justify-center items-center gap-2 mt-4"><Send size={16}/> {enviando ? 'Gravando...' : (isMaster(user) ? 'Salvar no Banco' : 'Enviar Sugestão')}</button>
             </form>
@@ -210,7 +209,7 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => { 
             <h3 className="text-xl font-[900] uppercase italic text-slate-950 mb-8">Novo Cadastro</h3>
             <form onSubmit={handleAddMembro} className="space-y-3">
               <input required type="text" placeholder="Nome Completo" value={formMembro.name} onChange={ev => setFormMembro({...formMembro, name: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none uppercase shadow-sm" />
-              <select disabled={!isMaster(user)} value={formMembro.city} onChange={ev => setFormMembro({...formMembro, city: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none shadow-sm disabled:opacity-50">{CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}</select>
+              <select value={formMembro.city} onChange={ev => setFormMembro({...formMembro, city: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none shadow-sm">{CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}</select>
               <input required type="text" placeholder="Telefone (ex: 11 99999-9999)" value={formMembro.contact} onChange={ev => setFormMembro({...formMembro, contact: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none shadow-sm" />
               <button disabled={enviando} type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] active:scale-95 shadow-xl transition-all mt-4">{enviando ? 'Enviando...' : (isMaster(user) ? 'Cadastrar Agora' : 'Sugerir Cadastro')}</button>
             </form>
@@ -235,4 +234,4 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => { 
   );
 };
 
-export default Comissao; // Exporta a tela de contatos regionais e examinadoras atualizada.
+export default Comissao; // Exporta a tela de contatos regionais e examinadoras com suporte a transição de cidade.

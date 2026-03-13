@@ -1,98 +1,97 @@
-// src/constants/permissions.js // Localização do arquivo no projeto.
+// src/constants/permissions.js // Localização do arquivo no projeto para o sistema se encontrar.
 
-/** // Início do comentário de documentação.
- * Este arquivo centraliza todas as regras de acesso do sistema. // Define o objetivo do arquivo.
- * Ele protege o App garantindo que cada irmão acesse apenas o que lhe compete. // Explica a utilidade para o negócio.
+/** // Início do comentário de documentação técnica.
+ * Este arquivo centraliza todas as regras de acesso do sistema. // Define o objetivo: ser o único lugar de regras.
+ * Ele protege o App garantindo que cada irmão acesse apenas o que lhe compete. // Explica o valor para a Regional.
  */ // Fim do comentário.
 
-// 1. Definição estrita dos cargos que o sistema reconhece // Comentário organizador.
-export const CARGOS = { // Lista oficial de cargos aceitos pelo sistema.
-  REGIONAL: "Secretário da Música Regional", // Cargo com poder administrativo total e mestre.
-  ANCIAO: "Ancião", // Cargo de liderança com acesso ao Dashboard.
-  ENC_REGIONAL: "Encarregado Regional", // Cargo de liderança com acesso ao Dashboard.
-  EXAMINADORA: "Examinadora", // Cargo operacional focado na cidade.
-  SEC_CIDADE: "Secretário da Música Cidade" // Cargo operacional focado na cidade.
+// 1. Definição estrita dos cargos que o sistema reconhece // Organização dos nomes oficiais.
+export const CARGOS = { // Lista oficial de cargos que o banco de dados pode conter.
+  REGIONAL: "Secretário da Música Regional", // Cargo máximo: o Maestro com controle total.
+  ANCIAO: "Ancião", // Cargo de liderança: vê gráficos, mas não mexe na configuração técnica.
+  ENC_REGIONAL: "Encarregado Regional", // Cargo de liderança: tem acesso à sala de estatísticas (Dashboard).
+  EXAMINADORA: "Examinadora", // Cargo operacional: cuida dos contatos da sua cidade.
+  SEC_CIDADE: "Secretário da Música Cidade" // Cargo operacional: focado na zeladoria da sua sede.
 }; // Fim da lista de cargos.
 
 /** // Início do comentário explicativo.
- * 2. Motor de Identificação de Nível // Título da seção.
- * Esta função decide se o usuário é um 'Mestre' ou um 'Colaborador de Cidade'. // Explica a lógica de separação.
+ * 2. Motor de Identificação de Nível // O "Cérebro" que reconhece o crachá do usuário.
+ * Esta função decide se o usuário é um 'Master' ou um 'Editor'. // Explica a separação de poderes.
  */ // Fim do comentário.
-export const obterNivelAcesso = (usuario) => { // Função que analisa quem é o usuário logado.
-  if (!usuario) return 'visitante'; // Se não houver ninguém logado, define como visitante comum.
+export const obterNivelAcesso = (usuario) => { // Função que analisa o perfil de quem logou.
+  if (!usuario) return 'visitante'; // Se não houver login, o sistema o trata como alguém da plateia (visitante).
   
-  // REGRA DE OURO: Secretário Regional sempre entra como Master técnico // Comentário de regra de negócio.
-  if (usuario.cargo === CARGOS.REGIONAL || usuario.nivel === 'master') { // Verifica se é o cargo de Secretário Regional.
-    return 'master'; // Retorna o nível de controle total.
+  // REGRA DE OURO: Secretário Regional ou fleg de 'master' no banco ganha poder total.
+  if (usuario.cargo === CARGOS.REGIONAL || usuario.nivel === 'master') { // Verifica se é o cargo de Maestro Regional.
+    return 'master'; // Retorna o nível de autoridade máxima.
   } // Fecha a verificação de Master.
   
-  return 'editor'; // Para todos os outros cargos logados, define como editor restrito.
+  return 'editor'; // Para todos os outros cargos oficiais, define como um colaborador restrito (Editor).
 }; // Fecha a função de nível de acesso.
 
 /** // Início do comentário explicativo.
- * 3. Tabela de Permissões por Nível // Título da seção.
- * Define o que aparece na tela para cada tipo de usuário de forma técnica. // Explica o propósito.
+ * 3. Tabela de Permissões por Nível // Define o que cada "crachá" libera na tela.
+ * Define o que aparece na tela para cada tipo de usuário de forma técnica. // Propósito da tabela.
  */ // Fim do comentário.
-export const REGRAS = { // Objeto que guarda as permissões de cada nível.
-  master: { // Regras para quem é Mestre.
-    podeGerenciarUsuarios: true, // Autoriza o mestre a aprovar ou remover usuários.
-    podeEditarTudo: true, // Mostra botões de edição em todos os lugares.
-    podeAdicionarTudo: true, // Mostra botões de "Novo Evento" em todos os lugares.
-    podeExcluirDireto: true, // Permite apagar dados sem pedir aprovação a ninguém.
-    tipoAcao: 'direta' // Define que as mudanças salvam na hora no banco de dados.
+export const REGRAS = { // Objeto que guarda as chaves de cada porta do App.
+  master: { // Regras para o Maestro (Master).
+    podeGerenciarUsuarios: true, // Pode aprovar novos irmãos ou remover quem saiu do cargo.
+    podeEditarTudo: true, // Vê botões de edição em qualquer cidade da Regional.
+    podeAdicionarTudo: true, // Pode criar novos ensaios em qualquer lugar.
+    podeExcluirDireto: true, // Pode apagar um erro no banco sem pedir permissão.
+    tipoAcao: 'direta' // O que ele faz, salva na hora no banco oficial.
   }, // Fim das regras de Master.
-  editor: { // Regras para cargos como Ancião, Encarregados de Cidade, etc.
-    podeGerenciarUsuarios: false, // Impede que eles mexam nas contas de outros irmãos.
-    podeEditarTudo: false, // Bloqueia a edição direta; os botões dependem da cidade.
-    podeAdicionarTudo: false, // Bloqueia a adição direta para evitar lixo no banco.
-    podeExcluirDireto: false, // Impede que apaguem dados oficiais diretamente.
-    tipoAcao: 'sugestao' // Define que tudo o que fizerem precisa ser aprovado pelo Master.
+  editor: { // Regras para os Músicos/Secretários (Editores).
+    podeGerenciarUsuarios: false, // Não pode mexer no cadastro de outros irmãos.
+    podeEditarTudo: false, // Não edita direto; o botão de salvar vira um botão de "Sugerir".
+    podeAdicionarTudo: false, // Criação de novos itens passa pela triagem do Master.
+    podeExcluirDireto: false, // Se quiser apagar algo, o Master precisa autorizar.
+    tipoAcao: 'sugestao' // Tudo o que ele faz entra na "Fila de Fomentos" para o Master conferir.
   }, // Fim das regras de Editor.
-  visitante: { // Regras para quem apenas baixou o app e não logou.
-    podeGerenciarUsuarios: false, // Visitante não vê quem são os usuários.
-    podeEditarTudo: false, // Visitante não vê botões de editar.
-    podeAdicionarTudo: false, // Visitante não vê botões de adicionar.
-    podeExcluirDireto: false, // Visitante não vê botões de excluir.
-    tipoAcao: 'bloqueado' // Define que o visitante só pode ler as informações.
+  visitante: { // Regras para a Plateia (Visitante não logado).
+    podeGerenciarUsuarios: false, // Não vê nomes nem cargos de ninguém.
+    podeEditarTudo: false, // Não vê lápis de edição.
+    podeAdicionarTudo: false, // Não vê botão de sinal de mais (+).
+    podeExcluirDireto: false, // Não vê ícone de lixeira.
+    tipoAcao: 'bloqueado' // Apenas observa as informações públicas.
   } // Fim das regras de Visitante.
 }; // Fim do objeto de regras.
 
 /** // Início do comentário explicativo.
- * 4. Verificação de Acesso ao Dashboard // Título da seção.
- * Regra: Apenas Master, Ancião e Encarregado Regional visualizam gráficos. // Explica a nova regra solicitada.
+ * 4. Verificação de Acesso ao Dashboard // A "Sala de Comando" da Regional.
+ * Regra: Apenas Master, Ancião e Encarregado Regional visualizam gráficos. // Privacidade de dados.
  */ // Fim do comentário.
-export const temAcessoAoDashboard = (usuario) => { // Função que decide se mostra o botão de Dashboard.
-  if (!usuario) return false; // Se não estiver logado, o acesso é negado.
+export const temAcessoAoDashboard = (usuario) => { // Função que decide se o botão de Dashboard aparece.
+  if (!usuario) return false; // Visitante nunca entra na sala de gráficos.
   
-  const nivel = obterNivelAcesso(usuario); // Pega o nível técnico (master ou editor).
+  const nivel = obterNivelAcesso(usuario); // Descobre o nível técnico (master ou editor).
   
-  // Liberado se for Master OU se o cargo for Ancião OU se o cargo for Encarregado Regional // Explicação da lógica.
-  return ( // Início da validação múltipla.
-    nivel === 'master' || // Verifica se é o administrador do sistema.
-    usuario.cargo === CARGOS.ANCIAO || // Verifica se é um Ancião.
-    usuario.cargo === CARGOS.ENC_REGIONAL // Verifica se é um Encarregado Regional.
-  ); // Retorna 'sim' se qualquer uma das condições for verdadeira.
+  // Condição para entrar: Ser Master OU ter cargo de liderança regional.
+  return ( // Início da validação de acesso.
+    nivel === 'master' || // Se for o dono do sistema.
+    usuario.cargo === CARGOS.ANCIAO || // Se for um Ancião.
+    usuario.cargo === CARGOS.ENC_REGIONAL // Se for um Encarregado Regional.
+  ); // Retorna 'sim' se o usuário preencher qualquer um desses requisitos.
 }; // Fecha a função do Dashboard.
 
 /** // Início do comentário explicativo.
- * 5. Validador de Territorialidade // Título da seção.
- * Garante que um colaborador de Jundiaí não sugira mudanças em Itatiba. // Explica a trava de segurança.
+ * 5. Validador de Territorialidade // A "Cerca Eletrônica" por cidade.
+ * Garante que um colaborador de Jundiaí não sugira mudanças em Itatiba. // Proteção contra erros geográficos.
  */ // Fim do comentário.
-export const podeVerBotoesDeGestao = (usuario, cidadeDoCard) => { // Função que mostra botões de Editar/Excluir nos cards.
+export const podeVerBotoesDeGestao = (usuario, cidadeDoCard) => { // Decide se mostra o Lápis/Lixo nos cards de ensaio.
   const nivel = obterNivelAcesso(usuario); // Identifica se é Master ou Editor.
   
-  if (nivel === 'master') return true; // Se for o mestre, ele vê os botões em todos os cards do app.
-  if (!usuario || nivel === 'visitante') return false; // Se for visitante, nunca verá botões de edição.
+  if (nivel === 'master') return true; // O Master é onipresente: vê e edita todas as cidades.
+  if (!usuario || nivel === 'visitante') return false; // Visitante nunca vê botões de gestão.
   
-  const minhaCidade = usuario.cidade?.toUpperCase().trim(); // Pega a cidade cadastrada no perfil do usuário.
-  const cidadeAlvo = cidadeDoCard?.toUpperCase().trim(); // Pega a cidade que está escrita no card do ensaio.
+  const minhaCidade = normalizarTexto(usuario.cidade); // Pega a cidade do músico e limpa o texto.
+  const cidadeAlvo = normalizarTexto(cidadeDoCard); // Pega a cidade do evento e limpa o texto.
   
-  return minhaCidade === cidadeAlvo; // Só mostra o botão de editar se a cidade do usuário for a mesma do ensaio.
+  return minhaCidade === cidadeAlvo; // Só libera o botão se o músico pertencer àquela cidade específica.
 }; // Fecha a função de territorialidade.
 
 /** // Início do comentário explicativo.
- * 6. Atalhos Úteis // Título da seção.
- * Pequenas funções para facilitar o uso no restante do código. // Explica a utilidade.
+ * 6. Atalhos Rápidos // Facilita a escrita do código em outras partes do App.
  */ // Fim do comentário.
-export const isMaster = (usuario) => obterNivelAcesso(usuario) === 'master'; // Atalho rápido para saber se é Master.
-export const isLogado = (usuario) => !!usuario; // Atalho rápido para saber se o usuário entrou com e-mail e senha.
+export const isMaster = (usuario) => obterNivelAcesso(usuario) === 'master'; // Atalho para perguntar: "É o Maestro?".
+export const isLogado = (usuario) => !!usuario; // Atalho para perguntar: "Alguém entrou no sistema?".

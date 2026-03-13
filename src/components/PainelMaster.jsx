@@ -26,77 +26,78 @@ import { REGIONAIS as ENCARREGADOS_LISTA } from '../../migracao_backup/data/migr
 import { NOVOS_REGIONAIS_DATA } from '../../migracao_backup/data/migrarRegionais';
 import { LOCAIS_DATA } from '../../migracao_backup/data/migrarLocais';
 
-const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // CORREÇÃO: Agora o componente recebe o contador de pendências do App.jsx.
+const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // Componente que exibe o painel de perfil e administrativo.
   const [usuariosPendentes, setUsuariosPendentes] = useState([]); // Lista de novos cadastros aguardando aprovação.
   const [sugestoesAlteracao, setSugestoesAlteracao] = useState([]); // Lista de edições enviadas pelos colaboradores.
   const [todosUsuarios, setTodosUsuarios] = useState([]); // Lista de todos os usuários ativos no sistema.
-  const [rankingAtividade, setRankingAtividade] = useState([]); // Dados para o ranking de aprovações.
-  const [countTickets, setCountTickets] = useState(0); // Quantidade de mensagens não lidas na lâmpada.
+  const [rankingAtividade, setRankingAtividade] = useState([]); // Dados para o ranking de atividades.
+  const [countTickets, setCountTickets] = useState(0); // Quantidade de mensagens de suporte em aberto.
 
-  const [openAcessos, setOpenAcessos] = useState(false); // Controla a abertura da sanfona de Acessos.
-  const [openDados, setOpenDados] = useState(false); // Controla a abertura da sanfona de Sugestões.
-  const [openApp, setOpenApp] = useState(false); // Controla a abertura da sanfona de Tickets.
+  const [openAcessos, setOpenAcessos] = useState(false); // Controla se a lista de acessos novos está aberta.
+  const [openDados, setOpenDados] = useState(false); // Controla se a lista de sugestões de dados está aberta.
+  const [openApp, setOpenApp] = useState(false); // Controla se a lista de tickets está aberta.
 
-  const masterLogado = isMaster(userLogado); // Verifica se o usuário logado tem permissão total de Master.
-  const [aba, setAba] = useState(masterLogado ? 'pendentes' : 'perfil'); // Define qual aba abre primeiro (Master vê pendências, outros vêem perfil).
+  const masterLogado = isMaster(userLogado); // BLOQUEIO DE SEGURANÇA: Identifica se quem está usando é o Maestro (Master).
+  const [aba, setAba] = useState(masterLogado ? 'pendentes' : 'perfil'); // Define qual aba aparece primeiro baseada no cargo.
   
-  const [feedback, setFeedback] = useState(null); // Estado para mensagens de confirmação na tela.
-  const [loadingModulos, setLoadingModulos] = useState({}); // Controla o ícone de carregamento durante a restauração de backups.
-  const [confirma, setConfirma] = useState(null); // Guarda qual ação de reset o usuário precisa confirmar.
-  const [configLista, setConfigLista] = useState({ url: '', dataReferencia: '', atualizacao: '' }); // Configurações da lista de batismo.
+  const [feedback, setFeedback] = useState(null); // Mostra avisos de sucesso ou erro no topo da tela.
+  const [loadingModulos, setLoadingModulos] = useState({}); // Ícone de "girando" enquanto o sistema trabalha.
+  const [confirma, setConfirma] = useState(null); // Janela de "Tem certeza?" antes de apagar algo.
+  const [configLista, setConfigLista] = useState({ url: '', dataReferencia: '', atualizacao: '' }); // Dados da Lista de Batismos.
   
-  const [meuNome, setMeuNome] = useState(userLogado?.nome || ''); // Campo editável do nome do usuário.
-  const [minhaCidade, setMinhaCidade] = useState(userLogado?.cidade || ''); // Campo editável da cidade do usuário.
-  const [meuCargo, setMeuCargo] = useState(userLogado?.cargo || ''); // Campo editável do cargo do usuário.
+  const [meuNome, setMeuNome] = useState(userLogado?.nome || ''); // Campo onde o usuário digita o próprio nome.
+  const [minhaCidade, setMinhaCidade] = useState(userLogado?.cidade || ''); // Guarda a cidade atual do perfil.
+  const [meuCargo, setMeuCargo] = useState(userLogado?.cargo || ''); // Guarda o cargo atual do perfil.
   
-  const [editandoUser, setEditandoUser] = useState(null); // Guarda qual usuário está sendo editado na lista geral.
-  const [novoCargo, setNovoCargo] = useState(''); // Estado para trocar o cargo de alguém.
-  const [novaCidade, setNovaCidade] = useState(''); // Estado para trocar a cidade de alguém.
+  const [editandoUser, setEditandoUser] = useState(null); // Identifica qual usuário o Master clicou para editar.
+  const [novoCargo, setNovoCargo] = useState(''); // Novo cargo escolhido pelo Master para outro usuário.
+  const [novaCidade, setNovaCidade] = useState(''); // Nova cidade escolhida pelo Master para outro usuário.
 
-  useEffect(() => { // Monitora o banco de dados em tempo real para o Master.
-    if (!userLogado || !masterLogado) return; // Se não for Master, não abre as vigias de dados sensíveis.
+  useEffect(() => { // Vigia o banco de dados em tempo real (onSnapshot).
+    if (!userLogado || !masterLogado) return; // Se não for Master, o sistema não abre os ouvidos para dados sensíveis de outros.
 
     let unsubP, unsubS, unsubC, unsubR, unsubT;
 
-    unsubP = onSnapshot(collection(db, "usuarios"), (snap) => { // Vigia novos usuários no banco.
+    unsubP = onSnapshot(collection(db, "usuarios"), (snap) => { // Escuta a lista de usuários.
       const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setUsuariosPendentes(lista.filter(u => u.status === 'pendente'));
       setTodosUsuarios(lista.filter(u => u.status !== 'pendente'));
     });
 
-    unsubS = onSnapshot(collection(db, "sugestoes_pendentes"), (snap) => { // Vigia as sugestões de edição enviadas.
+    unsubS = onSnapshot(collection(db, "sugestoes_pendentes"), (snap) => { // Escuta sugestões de alteração de dados.
       setSugestoesAlteracao(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    unsubT = onSnapshot(query(collection(db, "feedback_usuarios"), where("status", "==", "pendente")), (snap) => { // Vigia as mensagens da lâmpada.
+    unsubT = onSnapshot(query(collection(db, "feedback_usuarios"), where("status", "==", "pendente")), (snap) => { // Escuta mensagens da lâmpada.
       setCountTickets(snap.size);
     });
 
     const qRanking = query(collection(db, "sugestoes_aprovadas_historico"), orderBy("dataProcessamento", "desc"), limit(50));
-    unsubR = onSnapshot(qRanking, (snap) => { // Vigia o histórico recente de atividades.
+    unsubR = onSnapshot(qRanking, (snap) => { // Escuta o histórico para montar o ranking.
       setRankingAtividade(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    unsubC = onSnapshot(doc(db, "configuracoes", "lista_oficial"), (snap) => { // Vigia as configurações globais do sistema.
+    unsubC = onSnapshot(doc(db, "configuracoes", "lista_oficial"), (snap) => { // Escuta a URL da lista oficial.
       if (snap.exists()) setConfigLista(snap.data());
     });
 
-    return () => { // Limpa as conexões ao fechar o painel.
+    return () => { // Função de limpeza para não sobrecarregar o celular.
       if (unsubP) unsubP(); if (unsubS) unsubS(); if (unsubC) unsubC(); if (unsubR) unsubR(); if (unsubT) unsubT();
     };
   }, [masterLogado, userLogado]);
 
-  const dispararFeedback = (msg, tipo) => { setFeedback({ msg, tipo }); }; // Atalho para mostrar avisos coloridos no topo.
+  const dispararFeedback = (msg, tipo) => { setFeedback({ msg, tipo }); }; // Faz o alerta colorido aparecer.
 
-  const atualizarMeuPerfil = async (e) => { // Salva as mudanças no próprio cadastro do colaborador.
+  const atualizarMeuPerfil = async (e) => { // Salva a mudança apenas do Nome do usuário logado.
     e.preventDefault();
     try {
-      await updateDoc(doc(db, "usuarios", auth.currentUser.uid), { nome: meuNome, cidade: minhaCidade, cargo: meuCargo });
-      dispararFeedback("Perfil atualizado com sucesso!", 'sucesso');
+      // TRAVA DE SEGURANÇA: Só enviamos o nome. O cargo e cidade ficam protegidos no banco.
+      await updateDoc(doc(db, "usuarios", auth.currentUser.uid), { nome: meuNome });
+      dispararFeedback("Nome atualizado!", 'sucesso');
     } catch (e) { dispararFeedback("Erro ao atualizar perfil", 'erro'); }
   };
 
-  const gerenciarUsuario = async (uid, campos) => { // Aplica alterações em outros usuários (Ação de Master).
+  const gerenciarUsuario = async (uid, campos) => { // Função do Master para mudar dados de qualquer pessoa.
     try {
       await updateDoc(doc(db, "usuarios", uid), campos);
       dispararFeedback("Usuário atualizado!", 'sucesso');
@@ -104,15 +105,15 @@ const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // CORREÇ
     } catch (e) { dispararFeedback("Falha na atualização", 'erro'); }
   };
 
-  const resetarSenhaUsuario = async (email) => { // Envia e-mail de recuperação de senha oficial.
+  const resetarSenhaUsuario = async (email) => { // Envia o e-mail de "Esqueci minha senha".
     try {
       await sendPasswordResetEmail(auth, email);
       dispararFeedback("E-mail de redefinição enviado!", 'sucesso');
     } catch (e) { dispararFeedback("Erro ao solicitar reset", 'erro'); }
   };
 
-  const processarSugestao = async (sug, aprovado) => { // Função Crítica: Decide o destino de uma sugestão de mudança.
-    const batch = writeBatch(db); // Prepara um pacote de ações para o banco.
+  const processarSugestao = async (sug, aprovado) => { // Aceita ou recusa uma sugestão de mudança de ensaio.
+    const batch = writeBatch(db); // Prepara um pacote de ordens para o banco.
     try {
       if (aprovado) {
         let colecao = sug.tipo.includes('local') ? "ensaios_locais" : 
@@ -120,18 +121,18 @@ const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // CORREÇ
                       sug.tipo.includes('examinadora') ? "examinadoras" : "encarregados_regionais";
 
         const refDocOficial = doc(db, colecao, sug.ensaioId);
-        batch.update(refDocOficial, sug.dadosSugeridos); // Adiciona a atualização do dado no pacote.
+        batch.update(refDocOficial, sug.dadosSugeridos); // Ordena a atualização.
         
         const refHistorico = doc(collection(db, "sugestoes_aprovadas_historico"));
-        batch.set(refHistorico, { ...sug, dataProcessamento: new Date(), processadoPor: userLogado.nome }); // Grava quem aprovou no histórico.
-        dispararFeedback("Alteração aprovada e registrada!", 'sucesso');
+        batch.set(refHistorico, { ...sug, dataProcessamento: new Date(), processadoPor: userLogado.nome }); // Grava quem autorizou.
+        dispararFeedback("Alteração aprovada!", 'sucesso');
       }
-      batch.delete(doc(db, "sugestoes_pendentes", sug.id)); // Remove a sugestão da fila de espera.
-      await batch.commit(); // Envia tudo de uma vez para o banco de dados.
+      batch.delete(doc(db, "sugestoes_pendentes", sug.id)); // Remove da fila.
+      await batch.commit(); // Executa o pacote.
     } catch (e) { dispararFeedback("Erro no processamento", 'erro'); }
   };
 
-  const syncModulo = async (tipo) => { // Função de emergência para restaurar dados originais.
+  const syncModulo = async (tipo) => { // Restaura os dados originais (Backup).
     setConfirma(null);
     setLoadingModulos(prev => ({ ...prev, [tipo]: true }));
     const batch = writeBatch(db);
@@ -166,7 +167,7 @@ const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // CORREÇ
     finally { setLoadingModulos(prev => ({ ...prev, [tipo]: false })); }
   };
 
-  const CompararCampo = ({ label, antigo, novo }) => { // Mostra visualmente o que mudou em uma sugestão.
+  const CompararCampo = ({ label, antigo, novo }) => { // Desenha o quadro de comparação entre dado velho e novo.
     const mudou = String(antigo || '').trim() !== String(novo || '').trim();
     if (!antigo && !novo) return null;
     return (
@@ -177,7 +178,7 @@ const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // CORREÇ
     );
   };
 
-  return ( // Estrutura visual da janela do Painel.
+  return ( // Estrutura visual do painel flutuante.
     <div className="fixed inset-0 z-[1500] bg-slate-950/60 backdrop-blur-md flex items-end sm:items-center justify-center p-4">
       {feedback && <Feedback mensagem={feedback.msg} tipo={feedback.tipo} aoFechar={() => setFeedback(null)} />}
       <div className="bg-[#F1F5F9] w-full max-w-xl rounded-[2.5rem] flex flex-col h-[85vh] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10 text-left">
@@ -199,9 +200,25 @@ const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // CORREÇ
               <form onSubmit={atualizarMeuPerfil} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
                 <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-3"><div className="p-3 bg-slate-950 text-white rounded-2xl"><User size={20}/></div><h4 className="text-[11px] font-black uppercase text-slate-950 italic">Meus Dados</h4></div><button type="button" onClick={() => resetarSenhaUsuario(userLogado.email)} className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-xl text-[7px] font-black uppercase border border-blue-100 active:scale-95 transition-all"><Lock size={12}/> Reset Senha</button></div>
                 <div className="space-y-4 text-left">
+                  {/* Nome continua editável para todos */}
                   <div className="flex flex-col gap-1"><span className="text-[8px] font-black uppercase text-slate-400 ml-2">Nome</span><input required type="text" value={meuNome} onChange={e => setMeuNome(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none uppercase" /></div>
-                  <div className="flex flex-col gap-1"><span className="text-[8px] font-black uppercase text-slate-400 ml-2">Cidade Principal</span><select required value={minhaCidade} onChange={e => setMinhaCidade(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none">{CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                  <div className="flex flex-col gap-1"><span className="text-[8px] font-black uppercase text-slate-400 ml-2">Cargo Musical</span><select required value={meuCargo} onChange={e => setMeuCargo(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none">{CARGOS_LISTA.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                  
+                  {/* TRAVA DE SEGURANÇA: Se não for Master, exibe apenas texto. Se for Master, exibe o Dropdown. */}
+                  <div className="flex flex-col gap-1"><span className="text-[8px] font-black uppercase text-slate-400 ml-2">Cidade Principal</span>
+                    {masterLogado ? (
+                      <select required value={minhaCidade} onChange={e => setMinhaCidade(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none">{CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}</select>
+                    ) : (
+                      <div className="w-full bg-slate-100 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-black text-slate-400 uppercase italic cursor-not-allowed select-none">{minhaCidade} </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-1"><span className="text-[8px] font-black uppercase text-slate-400 ml-2">Cargo Musical</span>
+                    {masterLogado ? (
+                      <select required value={meuCargo} onChange={e => setMeuCargo(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none">{CARGOS_LISTA.map(c => <option key={c} value={c}>{c}</option>)}</select>
+                    ) : (
+                      <div className="w-full bg-slate-100 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-black text-slate-400 uppercase italic cursor-not-allowed select-none">{meuCargo} </div>
+                    )}
+                  </div>
                 </div>
                 <button type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 active:scale-95 shadow-lg mt-2 transition-all"><Save size={16}/> Salvar Alterações</button>
               </form>
@@ -294,4 +311,4 @@ const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // CORREÇ
   );
 };
 
-export default PainelMaster; // Exporta o Painel Master corrigido para o aplicativo.
+export default PainelMaster;

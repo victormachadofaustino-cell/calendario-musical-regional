@@ -93,8 +93,8 @@ const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, aoAbrirDashboard, 
   return ( // Início da renderização visual que o irmão verá na tela.
     <div className="w-full space-y-5 animate-in px-6 py-2 text-left">
       
-      {/* CARD DE BOAS-VINDAS */}
-      {user && ( // Exibe o perfil do colaborador logado com nome, cargo e cidade.
+      {/* CARD DE BOAS-VINDAS: Identifica o colaborador logado */}
+      {user && ( 
         <div className="bg-white border border-slate-200 p-5 rounded-[2rem] flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-4">
             <div className="bg-slate-950 p-2.5 rounded-2xl text-white shadow-lg"><User size={18} /></div>
@@ -112,8 +112,8 @@ const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, aoAbrirDashboard, 
         </div>
       )}
 
-      {/* CARD PRÓXIMO REGIONAL - ORGANIZAÇÃO DE ÍCONES E SELO (ANEXO NOVO) */}
-      {proximoRegional && ( // Exibe o destaque do próximo evento da agenda regional.
+      {/* CARD PRÓXIMO REGIONAL: Destaque principal da agenda regional */}
+      {proximoRegional && ( 
         <div className="space-y-3">
           <div className="flex items-center gap-1.5 px-1">
             <Star size={10} className="text-amber-500 fill-amber-500" />
@@ -130,7 +130,7 @@ const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, aoAbrirDashboard, 
               </div>
             </div>
             
-            {/* BLOCO LATERAL AGRUPADO: Data em cima, botões logo abaixo (Anexo) */}
+            {/* BLOCO LATERAL: Data e botões agrupados à direita para facilitar o toque */}
             <div className="absolute top-4 right-5 bottom-4 flex flex-col items-end justify-between">
                <div className="bg-amber-500 text-slate-950 px-3 py-1.5 rounded-xl uppercase shadow-sm italic text-center min-w-[65px] flex flex-col items-center justify-center leading-none">
                   <span className="text-base font-[900]">{proximoRegional.dia}</span>
@@ -149,7 +149,7 @@ const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, aoAbrirDashboard, 
         </div>
       )}
 
-      {/* ENSAIOS DE HOJE - ORGANIZAÇÃO DE ÍCONES E SELO (ANEXO NOVO) */}
+      {/* ENSAIOS DE HOJE: Lista rápida dos ensaios locais do dia atual */}
       <div className="space-y-3 pt-1">
         <div className="flex justify-between items-center px-1">
           <h4 className="text-slate-400 text-[9px] font-black uppercase tracking-[0.4em]">Hoje • {formatarDiaExtenso(filtroPrecisoHoje)}</h4>
@@ -182,7 +182,7 @@ const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, aoAbrirDashboard, 
                     </div>
                   </div>
 
-                  {/* BLOCO LATERAL AGRUPADO: Dia da semana em cima, botões abaixo (Anexo) */}
+                  {/* BLOCO LATERAL: Sigla do dia e botões de ação rápida */}
                   <div className="absolute top-4 right-5 bottom-4 flex flex-col items-end justify-between">
                      <div className="bg-slate-950 text-white text-[10px] font-black px-3 py-2 rounded-lg uppercase shadow-sm border border-slate-800">
                         {DICIONARIO_DIAS[s.dia.split(' ')[1]] || s.dia.split(' ')[1]}
@@ -206,4 +206,4 @@ const Summary = ({ todosEnsaios, ensaiosRegionais, aoVerMais, aoAbrirDashboard, 
   );
 };
 
-export default Summary; // Exporta o componente com a lateral organizada e respiro nas margens.
+export default Summary; // Exporta o componente Summary afinado e pronto para a tela inicial.
