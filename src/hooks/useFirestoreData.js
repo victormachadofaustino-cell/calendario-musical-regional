@@ -1,49 +1,58 @@
-import { useState, useEffect } from 'react'; // Ferramentas base do React para criar gavetas de memória (estado) e observar mudanças (efeito).
-import { collection, onSnapshot } from 'firebase/firestore'; // Ferramentas para acessar as pastas de documentos e ouvir atualizações em tempo real no banco.
-import { db } from '../firebaseConfig'; // Importa a chave de acesso oficial do nosso banco de dados.
+import { useState, useEffect } from 'react'; // Ferramentas base do React para gerenciar memória e observar o banco.
+import { collection, onSnapshot } from 'firebase/firestore'; // Ferramentas para ouvir o banco de dados em tempo real.
+import { db } from '../firebaseConfig'; // Importa a conexão oficial com o banco.
 
-export function useFirestoreData() { // Função que funciona como um "Caminhão de Carga" para abastecer o App com dados.
-  const [todosEnsaios, setTodosEnsaios] = useState([]); // Gaveta de memória para guardar a lista de todos os Ensaios Locais das comuns.
-  const [ensaiosRegionaisData, setEnsaiosRegionaisData] = useState([]); // Gaveta de memória para guardar a agenda oficial de Ensaios Regionais.
-  const [encarregadosData, setEncarregadosData] = useState([]); // Gaveta de memória para guardar a lista de contatos dos Encarregados Regionais.
-  const [examinadorasData, setExaminadorasData] = useState([]); // Gaveta de memória para guardar a lista de contatos das Examinadoras.
-  const [loading, setLoading] = useState(true); // Um sinalizador (luz de carregando) que avisa se o caminhão ainda está na estrada buscando os dados.
+export function useFirestoreData() { // Função que busca todos os dados musicais da Regional.
+  // GAVETAS DE MEMÓRIA (Ordem rigorosa para o React não se perder)
+  const [todosEnsaios, setTodosEnsaios] = useState([]); // 1. Guarda os Ensaios Locais.
+  const [ensaiosRegionaisData, setEnsaiosRegionaisData] = useState([]); // 2. Guarda os Ensaios Regionais.
+  const [reunioesData, setReunioesData] = useState([]); // 3. NOVA GAVETA: Guarda a agenda de Reuniões.
+  const [encarregadosData, setEncarregadosData] = useState([]); // 4. Guarda contatos dos Encarregados.
+  const [examinadorasData, setExaminadorasData] = useState([]); // 5. Guarda contatos das Examinadoras.
+  const [loading, setLoading] = useState(true); // 6. Sinaliza se os dados ainda estão carregando.
 
-  useEffect(() => { // Inicia a conexão com o banco de dados assim que o usuário abre o aplicativo.
+  useEffect(() => { // Monta os "ouvidos" do App para escutar o banco de dados.
     
-    // 1. VIGIA DE REGIONAIS: Fica ouvindo a pasta "ensaios_regionais". Se mudar uma vírgula lá, o App atualiza sozinho.
+    // VIGIA 1: Escuta a agenda de Ensaios Regionais.
     const unsubRegionais = onSnapshot(collection(db, "ensaios_regionais"), (s) => {
-      setEnsaiosRegionaisData(s.docs.map(d => ({id: d.id, ...d.data()}))); // Mapeia os documentos e guarda o "ID" (RG do documento) junto com os dados.
+      setEnsaiosRegionaisData(s.docs.map(d => ({id: d.id, ...d.data()}))); //
     });
     
-    // 2. VIGIA DE LOCAIS: Fica ouvindo a pasta "ensaios_locais" onde estão os ensaios de cada igreja comum.
+    // VIGIA 2: Escuta a lista de Ensaios Locais das igrejas.
     const unsubLocais = onSnapshot(collection(db, "ensaios_locais"), (s) => {
-      setTodosEnsaios(s.docs.map(d => ({id: d.id, ...d.data()}))); // Transforma a lista do banco em uma lista que o React entende.
-      setLoading(false); // Assim que os ensaios chegam, apagamos a "luz de carregando".
+      setTodosEnsaios(s.docs.map(d => ({id: d.id, ...d.data()}))); //
+      setLoading(false); //
     });
 
-    // 3. VIGIA DE ENCARREGADOS: Fica ouvindo a pasta de contatos da comissão regional.
+    // VIGIA 3: Escuta a nova pasta de Reuniões (RMA, RCM, etc).
+    const unsubReunioes = onSnapshot(collection(db, "reunioes_regionais"), (s) => {
+      setReunioesData(s.docs.map(d => ({id: d.id, ...d.data()}))); //
+    });
+
+    // VIGIA 4: Escuta os contatos da Comissão de Encarregados.
     const unsubEncarregados = onSnapshot(collection(db, "encarregados_regionais"), (s) => {
-      setEncarregadosData(s.docs.map(d => ({id: d.id, ...d.data()}))); // Garante que o telefone do encarregado esteja sempre certo.
+      setEncarregadosData(s.docs.map(d => ({id: d.id, ...d.data()}))); //
     });
 
-    // 4. VIGIA DE EXAMINADORAS: Fica ouvindo a pasta de contatos das examinadoras da regional.
+    // VIGIA 5: Escuta os contatos das Examinadoras da Regional.
     const unsubExaminadoras = onSnapshot(collection(db, "examinadoras"), (s) => {
-      setExaminadorasData(s.docs.map(d => ({id: d.id, ...d.data()}))); // Atualiza os contatos das examinadoras instantaneamente.
+      setExaminadorasData(s.docs.map(d => ({id: d.id, ...d.data()}))); //
     });
 
-    // FUNÇÃO DE LIMPEZA: Quando o irmão fecha o App, nós "desligamos os rádios" para economizar a bateria do celular dele.
+    // LIMPEZA: Desliga todos os vigias ao fechar o App para economizar recursos.
     return () => {
-      unsubRegionais(); // Desliga o vigia de regionais.
-      unsubLocais(); // Desliga o vigia de locais.
-      unsubEncarregados(); // Desliga o vigia de encarregados.
-      unsubExaminadoras(); // Desliga o vigia de examinadoras.
+      unsubRegionais(); //
+      unsubLocais(); //
+      unsubReunioes(); //
+      unsubEncarregados(); //
+      unsubExaminadoras(); //
     };
-  }, []); // O colchete vazio significa que essa logística só precisa ser montada uma vez na abertura.
+  }, []); // Garante que a vigia só comece uma vez.
 
-  return { // Entrega as gavetas de memória prontas para os componentes de tela usarem.
+  return { // Entrega as informações para o Maestro (App.jsx).
     todosEnsaios, 
     ensaiosRegionaisData, 
+    reunioesData, 
     encarregadosData, 
     examinadorasData, 
     loading 

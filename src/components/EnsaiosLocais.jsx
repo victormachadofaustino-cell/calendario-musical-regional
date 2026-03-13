@@ -4,22 +4,23 @@ import { db } from '../firebaseConfig'; // Importa a conexão com o banco de dad
 import { collection, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore'; // Ferramentas para criar, ler, editar e apagar documentos no banco.
 import { 
   MapPin, Clock, User, AlertTriangle, Search, Filter, Edit3, Send, X, 
-  Navigation, Plus, Trash2, Calendar, ChevronDown, ChevronUp,
-  Phone, MessageCircle, Share2
+  Plus, Trash2, Calendar, ChevronDown, ChevronUp, Phone, Share2
 } from 'lucide-react'; // Ícones modernos para os botões e indicações visuais.
 import Feedback from './Feedback'; // Componente que mostra avisos de "Sucesso" ou "Erro" no topo.
 
 // Importação das constantes centralizadas, funções utilitárias e permissões
 import { CIDADES_LISTA } from '../constants/cidades'; // Lista oficial de cidades da região.
-import { buscarCoordenadas, normalizarTexto } from '../constants/comuns'; // Ferramentas para padronizar textos e buscar mapas.
+import { normalizarTexto } from '../constants/comuns'; // Ferramenta para padronizar textos (comparar nomes sem erro de acento).
 import { isMaster, podeVerBotoesDeGestao, obterNivelAcesso } from '../constants/permissions'; // Motor de regras de quem pode o quê.
+
+// CORREÇÃO: Importando as ferramentas centralizadas do nosso canivete suíço.
+import { abrirGoogleMaps, compartilharEnsaio } from '../utils/actions'; 
 
 const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user }) => { // Início do componente que recebe os ensaios e o usuário logado.
   const [busca, setBusca] = useState(''); // Guarda o texto que o usuário digita na barra de pesquisa.
   const [cidadeAberta, setCidadeAberta] = useState(null); // Controla qual sanfona (accordion) de cidade está aberta agora.
   const [filtroCidade, setFiltroCidade] = useState('Todas'); // Guarda a cidade selecionada no seletor de filtros.
   
-  // Estados de filtro de data
   const [semanaSelecionada, setSemanaSelecionada] = useState(''); // Guarda se o usuário quer ver só a 1ª semana, 2ª, etc.
   const [diaSelecionado, setDiaSelecionado] = useState(''); // Guarda se o usuário quer ver só Segunda, Terça, etc.
 
@@ -32,17 +33,16 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
   const [novoEnsaio, setNovoEnsaio] = useState({ cidade: 'Jundiaí', localidade: '', dia: '', hora: '', encarregado: '', contato: '', observacao: '' }); // Dados do formulário de nova criação.
   const [formSugestao, setFormSugestao] = useState({ localidade: '', dia: '', hora: '', encarregado: '', contato: '', observacao: '', cidade: '' }); // Dados do formulário de edição/sugestão.
 
-  const nivelAcesso = obterNivelAcesso(user); // Identifica se quem está usando é Master, Editor ou Visitante.
   const SEMANAS_LISTA = ["1ª", "2ª", "3ª", "4ª", "Últ."]; // Lista das semanas do mês para os botões de filtro.
   const DIAS_SIGLAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]; // Lista dos dias da semana para os botões de filtro.
 
   useEffect(() => { // Lógica que roda quando a tela abre ou o filtro do App muda.
-    if (diaFiltroApp) { // Se o usuário veio da "Visão Geral" clicando em um dia...
-      setSemanaSelecionada(diaFiltroApp.split(' ')[0]); // ...aplica a semana automaticamente.
-      setDiaSelecionado(diaFiltroApp.split(' ')[1]); // ...aplica o dia da semana automaticamente.
+    if (diaFiltroApp) { // Se o usuário veio do Hub clicando em um dia específico...
+      setSemanaSelecionada(diaFiltroApp.split(' ')[0]); // ...aplica a semana (1ª, 2ª...) automaticamente.
+      setDiaSelecionado(diaFiltroApp.split(' ')[1]); // ...aplica o dia (Seg, Ter...) automaticamente.
       setFiltroCidade('Todas'); // Garante que mostre todas as cidades para aquele dia.
     }
-    return () => { // Limpa tudo quando o usuário sai da tela.
+    return () => { // Limpa tudo quando o usuário sai desta tela.
       setSemanaSelecionada('');
       setDiaSelecionado('');
       setBusca('');
@@ -50,43 +50,27 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
     };
   }, [diaFiltroApp]); // Monitora mudanças no filtro vindo de fora.
 
-  const abrirGoogleMaps = (localidade, cidade) => { // Função para abrir o GPS.
-    const coords = buscarCoordenadas(cidade, localidade); // Tenta achar as coordenadas precisas.
-    const destino = coords ? `${coords.lat},${coords.lon}` : encodeURIComponent(`CCB ${localidade} ${cidade}`); // Se não tiver coordenadas, usa o nome da igreja.
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${destino}`, '_blank'); // Abre o navegador com o trajeto.
-  };
-
-  const compartilharEnsaio = async (e) => { // Função para mandar os dados pelo WhatsApp ou Share nativo.
-    const texto = `*CCB Regional Jundiaí*\n📍 Ensaio Local: ${e.localidade} (${e.cidade})\n🗓️ ${e.dia} às ${e.hora}\n👤 Encarregado: ${e.encarregado || 'N/I'}${e.observacao ? `\n⚠️ Obs: ${e.observacao}` : ''}`; // Formata a mensagem.
-    if (navigator.share) { // Se o celular permitir o compartilhamento do sistema...
-      try {
-        await navigator.share({ title: 'Ensaio Local CCB', text: texto }); // ...abre a janelinha de compartilhamento.
-      } catch (err) { console.log("Erro ao compartilhar", err); }
-    } else {
-      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, '_blank'); // Caso contrário, abre o WhatsApp direto.
-    }
-  };
-
   const ligarTelefone = (numero) => { // Inicia uma chamada telefônica.
+    if (!numero || numero === "-") return; // Se não tiver número, não faz nada.
     const limpo = numero.replace(/\D/g, ""); // Remove parênteses e traços.
     window.open(`tel:${limpo}`, '_self'); // Abre o discador do celular.
   };
 
   const handleAddEnsaio = async (e) => { // Lógica para salvar um novo ensaio.
     e.preventDefault(); // Impede a página de recarregar.
-    setEnviando(true); // Trava o botão.
+    setEnviando(true); // Trava o botão para evitar envio duplo.
     try {
       if (isMaster(user)) { // Se for Master, salva direto no banco oficial.
         await addDoc(collection(db, "ensaios_locais"), novoEnsaio);
         setFeedback({ msg: "Ensaio adicionado!", tipo: 'sucesso' });
-      } else { // Se for Editor da cidade, envia como sugestão.
+      } else { // Se for Editor da cidade, envia como sugestão para o Master aprovar.
         await addDoc(collection(db, "sugestoes_pendentes"), {
           tipo: 'local_criacao', cidade: novoEnsaio.cidade, localidade: novoEnsaio.localidade,
           dadosSugeridos: novoEnsaio, solicitanteNome: user.nome, status: 'pendente', dataSolicitacao: new Date()
         });
         setFeedback({ msg: "Criação enviada para análise!", tipo: 'sucesso' });
       }
-      setMostraAdd(false); // Fecha o modal.
+      setMostraAdd(false); // Fecha a janelinha de cadastro.
       setNovoEnsaio({ cidade: user?.cidade || 'Jundiaí', localidade: '', dia: '', hora: '', encarregado: '', contato: '', observacao: '' }); // Reseta o formulário.
     } catch (err) { setFeedback({ msg: "Erro ao salvar", tipo: 'erro' }); } 
     finally { setEnviando(false); } // Destrava o botão.
@@ -94,17 +78,17 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
 
   const handleExcluirOuSugerir = async () => { // Lógica inteligente de remoção.
     try {
-      if (isMaster(user)) { // Se for o mestre, apaga de verdade agora.
+      if (isMaster(user)) { // Se for o mestre, apaga do banco imediatamente.
         await deleteDoc(doc(db, "ensaios_locais", confirmaExclusao.id));
         setFeedback({ msg: "Removido com sucesso!", tipo: 'sucesso' });
-      } else { // Se for Editor, pede para o Master apagar.
+      } else { // Se for Editor, solicita ao Master a exclusão.
         await addDoc(collection(db, "sugestoes_pendentes"), {
           ensaioId: confirmaExclusao.id, tipo: 'local_exclusao', cidade: confirmaExclusao.cidade, localidade: confirmaExclusao.localidade,
           dadosAntigos: confirmaExclusao, solicitanteNome: user.nome, status: 'pendente', dataSolicitacao: new Date()
         });
         setFeedback({ msg: "Solicitação de exclusão enviada!", tipo: 'sucesso' });
       }
-      setConfirmaExclusao(null); // Fecha o modal de confirmação.
+      setConfirmaExclusao(null); // Fecha o aviso de confirmação.
     } catch (err) { setFeedback({ msg: "Erro na operação", tipo: 'erro' }); }
   };
 
@@ -115,32 +99,32 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
       if (isMaster(user)) { // Se for mestre, atualiza o banco na hora.
         await updateDoc(doc(db, "ensaios_locais", sugestaoAberta.id), formSugestao);
         setFeedback({ msg: "Banco atualizado!", tipo: 'sucesso' });
-      } else { // Se for colaborador de cidade, envia a edição para a fila de espera.
+      } else { // Se for colaborador de cidade, envia a edição para a fila de espera do Master.
         await addDoc(collection(db, "sugestoes_pendentes"), {
           ensaioId: sugestaoAberta.id, localidade: sugestaoAberta.localidade, cidade: sugestaoAberta.cidade, tipo: 'local',
           dadosAntigos: { ...sugestaoAberta }, dadosSugeridos: formSugestao, solicitanteNome: user.nome, status: 'pendente', dataSolicitacao: new Date()
         });
         setFeedback({ msg: "Sugestão enviada ao Master!", tipo: 'sucesso' });
       }
-      setSugestaoAberta(null); // Fecha o modal.
+      setSugestaoAberta(null); // Fecha a janelinha.
     } catch (error) { setFeedback({ msg: "Erro no envio", tipo: 'erro' }); } 
     finally { setEnviando(false); }
   };
 
   const ensaiosFiltradosFinal = useMemo(() => { // Lógica de filtro e ordenação ultra rápida.
     let filtrados = [...todosEnsaios];
-    if (semanaSelecionada) filtrados = filtrados.filter(e => e.dia.includes(semanaSelecionada.replace(/\D/g, "") || "Últ")); // Filtra por 1ª, 2ª, etc.
-    if (diaSelecionado) filtrados = filtrados.filter(e => e.dia.includes(diaSelecionado)); // Filtra por dia da semana.
-    if (filtroCidade !== 'Todas') filtrados = filtrados.filter(e => normalizarTexto(e.cidade) === normalizarTexto(filtroCidade)); // Filtra pela cidade selecionada.
-    if (busca) { // Filtra pelo que o usuário digitou (Igreja ou Nome).
+    if (semanaSelecionada) filtrados = filtrados.filter(e => e.dia.includes(semanaSelecionada.replace(/\D/g, "") || "Últ")); // Filtra pela semana do mês.
+    if (diaSelecionado) filtrados = filtrados.filter(e => e.dia.includes(diaSelecionado)); // Filtra pelo dia da semana (Seg, Ter...).
+    if (filtroCidade !== 'Todas') filtrados = filtrados.filter(e => normalizarTexto(e.cidade) === normalizarTexto(filtroCidade)); // Filtra pela cidade escolhida.
+    if (busca) { // Filtra pelo que o usuário escreveu na busca.
       const b = normalizarTexto(busca);
       filtrados = filtrados.filter(e => normalizarTexto(e.localidade).includes(b) || (e.encarregado && normalizarTexto(e.encarregado).includes(b)));
     }
 
-    const PESO_SEMANA = { "1ª": 1, "1º": 1, "2ª": 2, "2º": 2, "3ª": 3, "3º": 3, "4ª": 4, "4º": 4, "Últ": 5 }; // Define a ordem correta das semanas.
-    const PESO_DIA = { "Dom": 0, "Seg": 1, "Ter": 2, "Qua": 3, "Qui": 4, "Sex": 5, "Sáb": 6 }; // Define a ordem correta dos dias.
+    const PESO_SEMANA = { "1ª": 1, "1º": 1, "2ª": 2, "2º": 2, "3ª": 3, "3º": 3, "4ª": 4, "4º": 4, "Últ": 5 }; // Pesos para colocar em ordem cronológica.
+    const PESO_DIA = { "Dom": 0, "Seg": 1, "Ter": 2, "Qua": 3, "Qui": 4, "Sex": 5, "Sáb": 6 }; // Ordem dos dias na semana.
 
-    return filtrados.sort((a, b) => { // Organiza a lista para o usuário.
+    return filtrados.sort((a, b) => { // Organiza a lista final para o usuário ver.
       const semA = Object.keys(PESO_SEMANA).find(s => a.dia.includes(s)) || "";
       const semB = Object.keys(PESO_SEMANA).find(s => b.dia.includes(s)) || "";
       const diffSemana = (PESO_SEMANA[semA] || 99) - (PESO_SEMANA[semB] || 99);
@@ -153,13 +137,14 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
     });
   }, [todosEnsaios, semanaSelecionada, diaSelecionado, filtroCidade, busca]);
 
-  if (loading) return <div className="py-20 text-center animate-pulse font-black text-[10px] uppercase tracking-[0.5em]">Sincronizando Banco...</div>; // Tela de carregamento.
+  if (loading) return <div className="py-20 text-center animate-pulse font-black text-[10px] uppercase tracking-[0.5em]">Sincronizando Banco...</div>; // Mensagem de espera.
 
-  return ( // Estrutura visual da tela.
+  return ( // Desenho da tela de ensaios.
     <div className="w-full text-left relative flex flex-col">
       {feedback && <Feedback mensagem={feedback.msg} tipo={feedback.tipo} aoFechar={() => setFeedback(null)} />}
       
-      {podeVerBotoesDeGestao(user, user?.cidade) && ( // Só mostra o botão de (+) se o usuário tiver permissão na sua cidade ou for Master.
+      {/* Botão de Adicionar: Só aparece para Master ou Editor na sua cidade */}
+      {podeVerBotoesDeGestao(user, user?.cidade) && (
         <div className="px-6 pt-4">
           <button onClick={() => { setNovoEnsaio(prev => ({...prev, cidade: user.cidade})); setMostraAdd(true); }} className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 shadow-xl active:scale-95 transition-all">
             <Plus size={16}/> Novo Ensaio em {isMaster(user) ? 'Qualquer Cidade' : user.cidade}
@@ -167,6 +152,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
         </div>
       )}
 
+      {/* BARRA DE FILTROS FIXA: Facilita encontrar igrejas sem perder a barra de busca */}
       <div className="sticky top-0 z-30 bg-[#F1F5F9]/95 backdrop-blur-xl px-6 py-4 space-y-3 border-b border-slate-200">
         <div className="flex gap-2">
           <div className="relative flex-[2]">
@@ -174,8 +160,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
             <input type="text" placeholder="Igreja ou encarregado..." value={busca} onChange={e => setBusca(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl py-3 pl-11 pr-4 text-[11px] font-bold outline-none shadow-sm" />
           </div>
           <div className="relative flex-1">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-            <select value={filtroCidade} onChange={(e) => setFiltroCidade(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl py-3 pl-9 pr-4 text-[10px] font-bold outline-none appearance-none shadow-sm">
+            <select value={filtroCidade} onChange={(e) => setFiltroCidade(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl py-3 pl-4 pr-4 text-[10px] font-bold outline-none appearance-none shadow-sm text-center">
               {['Todas', ...CIDADES_LISTA].map(c => <option key={c} value={c}>{c === 'Todas' ? 'Cidades' : c}</option>)}
             </select>
           </div>
@@ -196,10 +181,11 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
         </div>
       </div>
 
+      {/* LISTAGEM POR CIDADES (SANFONA/ACCORDION) */}
       <div className="space-y-4 px-6 pb-32 mt-6">
         {CIDADES_LISTA.filter(c => (filtroCidade === 'Todas' || normalizarTexto(c) === normalizarTexto(filtroCidade))).map(cidade => {
           const ensaios = ensaiosFiltradosFinal.filter(e => normalizarTexto(e.cidade) === normalizarTexto(cidade));
-          if (ensaios.length === 0) return null;
+          if (ensaios.length === 0) return null; // Se a cidade não tem ensaios no filtro, não aparece.
           const isAberta = cidadeAberta === cidade;
 
           return (
@@ -220,7 +206,6 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
                         <div className="flex flex-col text-left">
                           <div className="flex items-center gap-2">
                              <h4 className="text-base font-[900] text-slate-950 uppercase leading-none italic pr-20">{e.localidade}</h4>
-                             {/* TOOLTIP/ALERTA VERMELHO: Aparece se houver observação (pode indicar deslocamento) */}
                              {e.observacao && <AlertTriangle size={18} className="text-red-500 animate-pulse shrink-0" />}
                           </div>
                           <div className="flex flex-col mt-2">
@@ -231,11 +216,10 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
                         <div className="absolute top-5 right-5 flex flex-col items-end gap-2">
                           <div className="bg-slate-950 text-white text-[9px] font-black px-3 py-3 rounded-xl uppercase shrink-0 shadow-md">{e.dia}</div>
                           <div className="flex gap-1">
-                            {podeVerBotoesDeGestao(user, e.cidade) && ( // Regra Territorial: Só edita se for da cidade do colaborador ou Master.
-                              // Função de Edição: Agora injeta a cidade de origem corretamente (fleg automático)
+                            {podeVerBotoesDeGestao(user, e.cidade) && ( 
                               <button onClick={() => { setSugestaoAberta(e); setFormSugestao({ ...e, cidade: e.cidade }); }} className="bg-amber-100 text-amber-600 p-2.5 rounded-xl active:scale-90 border border-amber-200"><Edit3 size={16}/></button>
                             )}
-                            {podeVerBotoesDeGestao(user, e.cidade) && ( // Regra Territorial: Só exclui se for da cidade do colaborador ou Master.
+                            {podeVerBotoesDeGestao(user, e.cidade) && ( 
                               <button onClick={() => setConfirmaExclusao(e)} className="bg-red-100 text-red-600 p-2.5 rounded-xl active:scale-90 border border-red-200 shadow-sm"><Trash2 size={16}/></button>
                             )}
                           </div>
@@ -244,7 +228,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
 
                       <div className="flex items-center gap-1.5 font-black text-slate-950 pb-2"><Clock size={14} className="text-amber-500 shrink-0"/> {e.hora}</div>
 
-                      {/* BADGE DE OBSERVAÇÃO: Faixa vermelha expandida se houver texto de aviso */}
+                      {/* AVISO DE OBSERVAÇÃO: Mostra se a igreja está em reforma ou se o ensaio mudou */}
                       {e.observacao && (
                         <div className="bg-red-50 p-3 rounded-2xl border border-red-100 flex gap-2">
                           <AlertTriangle size={14} className="text-red-500 shrink-0 mt-0.5" />
@@ -253,6 +237,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
                       )}
 
                       <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100">
+                        {/* Ações Rápidas: Chamar telefone, Compartilhar ou GPS */}
                         <button disabled={!e.contato || e.contato === "-"} onClick={() => ligarTelefone(e.contato)} className="bg-white border border-slate-200 text-blue-600 p-4 rounded-2xl active:scale-90 flex justify-center shadow-sm disabled:opacity-30"><Phone size={18} /></button>
                         <button disabled={!e.contato || e.contato === "-"} onClick={() => compartilharEnsaio(e)} className="bg-white border border-slate-200 text-emerald-600 p-4 rounded-2xl active:scale-90 flex justify-center shadow-sm disabled:opacity-30"><Share2 size={18} /></button>
                         <button onClick={() => abrirGoogleMaps(e.localidade, e.cidade)} className="bg-slate-950 text-white p-4 rounded-2xl active:scale-90 flex justify-center shadow-lg"><MapPin size={18} /></button>
@@ -266,7 +251,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
         })}
       </div>
 
-      {/* MODAL EDITAR/SUGERIR/ADD - AGORA COM CAMPO DE OBSERVAÇÃO E FLEG DE CIDADE CORRETO */}
+      {/* FORMULÁRIO DE EDIÇÃO/CRIAÇÃO (Modal Flutuante) */}
       {(sugestaoAberta || mostraAdd) && createPortal(
         <div onClick={() => { setSugestaoAberta(null); setMostraAdd(false); }} className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
           <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left">
@@ -284,7 +269,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Comum</span>
+                <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Comum (Igreja)</span>
                 <input required type="text" value={mostraAdd ? novoEnsaio.localidade : formSugestao.localidade} 
                        onChange={ev => mostraAdd ? setNovoEnsaio({...novoEnsaio, localidade: ev.target.value}) : setFormSugestao({...formSugestao, localidade: ev.target.value})} 
                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold uppercase outline-none" />
@@ -316,12 +301,10 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
                        placeholder="11999999999"
                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold outline-none" />
               </div>
-              {/* NOVO CAMPO: Observações liberado para Editores enviarem como sugestão */}
               <div className="flex flex-col gap-1">
                 <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Observações (Deslocamentos, Reformas...)</span>
                 <textarea rows="2" value={mostraAdd ? novoEnsaio.observacao : formSugestao.observacao} 
                        onChange={ev => mostraAdd ? setNovoEnsaio({...novoEnsaio, observacao: ev.target.value}) : setFormSugestao({...formSugestao, observacao: ev.target.value})} 
-                       placeholder="Ex: Ensaio deslocado para a comum X"
                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[10px] font-bold uppercase outline-none resize-none" />
               </div>
               <button disabled={enviando} type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest flex justify-center items-center gap-2 active:scale-95 shadow-xl transition-all mt-4">
@@ -332,7 +315,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
         </div>, document.body
       )}
 
-      {/* CONFIRMA EXCLUSÃO */}
+      {/* CONFIRMAÇÃO DE EXCLUSÃO */}
       {confirmaExclusao && createPortal(
         <div onClick={() => setConfirmaExclusao(null)} className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
           <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-center">
@@ -350,4 +333,4 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user })
   );
 };
 
-export default EnsaiosLocais; // Exporta o componente de ensaios das igrejas locais.
+export default EnsaiosLocais; // Exporta a lista de ensaios locais devidamente conectada às ferramentas de ação centralizadas.

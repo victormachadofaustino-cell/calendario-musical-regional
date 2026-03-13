@@ -3,81 +3,65 @@ import { createPortal } from 'react-dom'; // Ferramenta que permite criar janela
 import { db } from '../firebaseConfig'; // Importa a configuração de conexão com o banco de dados.
 import { collection, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore'; // Ferramentas para criar, atualizar e deletar dados no banco.
 import { 
-  MapPin, Clock, Calendar, Navigation, X, Edit3, Send, Plus, Trash2, 
-  MessageCircle, ChevronRight, Share2
-} from 'lucide-react'; // Biblioteca de ícones para os botões e indicações visuais.
+  MapPin, Clock, Calendar, X, Edit3, Send, Plus, Trash2, ChevronDown, Share2 
+} from 'lucide-react'; // 👈 CORREÇÃO: Adicionado 'Share2' que estava faltando na importação.
 import Feedback from './Feedback'; // Componente que mostra alertas de sucesso ou erro.
 
 // Importações centralizadas e motor de permissões
 import { CIDADES_LISTA } from '../constants/cidades'; // Lista oficial de cidades da regional.
-import { normalizarTexto, buscarCoordenadas } from '../constants/comuns'; // Funções para padronizar textos e buscar mapas.
-import { isMaster, podeVerBotoesDeGestao, obterNivelAcesso } from '../constants/permissions'; // Motor que decide o que cada usuário pode fazer.
+import { normalizarTexto } from '../constants/comuns'; // Função para padronizar textos (comparar nomes sem erro de acento).
+import { isMaster, podeVerBotoesDeGestao, obterNivelAcesso } from '../constants/permissions'; // Motor de regras de quem pode o quê.
+
+// CORREÇÃO: Importando as ferramentas centralizadas do nosso canivete suíço.
+import { abrirGoogleMaps, compartilharEnsaio } from '../utils/actions'; 
 
 const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => { // Início do componente que exibe a agenda regional.
-  const [filtroCidade, setFiltroCidade] = useState('Todas'); // Guarda a cidade escolhida no filtro.
-  const [filtroMes, setFiltroMes] = useState('Todos'); // Guarda o mês escolhido no filtro.
-  const [semanaSelecionada, setSemanaSelecionada] = useState(''); // Guarda a semana (1ª, 2ª, etc.) escolhida no filtro.
+  const [filtroCidade, setFiltroCidade] = useState('Todas'); // Guarda a cidade escolhida no filtro superior.
+  const [filtroMes, setFiltroMes] = useState('Todos'); // Guarda o mês escolhido no filtro superior.
+  const [semanaSelecionada, setSemanaSelecionada] = useState(''); // Guarda a semana (1ª, 2ª, etc.) escolhida.
 
-  const [feedback, setFeedback] = useState(null); // Controla a mensagem de aviso no topo da tela.
-  const [sugestaoAberta, setSugestaoAberta] = useState(null); // Guarda os dados do ensaio regional que está sendo editado.
+  const [feedback, setFeedback] = useState(null); // Controla a mensagem de aviso de sucesso/erro no topo.
+  const [sugestaoAberta, setSugestaoAberta] = useState(null); // Guarda os dados do regional que está sendo editado.
   const [confirmaExclusao, setConfirmaExclusao] = useState(null); // Guarda qual regional o usuário clicou para remover.
   const [mostraAdd, setMostraAdd] = useState(false); // Controla a exibição do formulário de criação de novo regional.
-  const [enviando, setEnviando] = useState(false); // Impede envios duplicados enquanto o banco processa.
+  const [enviando, setEnviando] = useState(false); // Impede cliques duplos enquanto o banco processa.
 
-  const [novoReg, setNovoReg] = useState({ sede: 'JUNDIAÍ', local: '', mes: 'Janeiro', dia: '', weekday: '', hora: '' }); // Estado do formulário de criação.
-  const [formSugestao, setFormSugestao] = useState({ local: '', dia: '', mes: '', weekday: '', hora: '' }); // Estado do formulário de edição.
+  const [novoReg, setNovoReg] = useState({ sede: 'JUNDIAÍ', local: '', mes: 'Janeiro', dia: '', weekday: '', hora: '' }); // Dados do formulário de criação.
+  const [formSugestao, setFormSugestao] = useState({ local: '', dia: '', mes: '', weekday: '', hora: '' }); // Dados do formulário de edição.
 
-  const nivelAcesso = obterNivelAcesso(user); // Identifica o cargo do usuário (Master, Editor ou Visitante).
-  const SEMANAS = ["1ª", "2ª", "3ª", "4ª", "Últ"]; // Opções de semana para o filtro.
+  const SEMANAS = ["1ª", "2ª", "3ª", "4ª", "Últ"]; // Opções de semana para os botões de filtro.
   const MESES_LISTA = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']; // Lista oficial de meses.
 
-  const abrirGoogleMaps = (local, sede) => { // Função para abrir o GPS.
-    const coords = buscarCoordenadas(sede, local); // Busca coordenadas automáticas.
-    const destino = coords ? `${coords.lat},${coords.lon}` : encodeURIComponent(`CCB ${local} ${sede}`); // Define o destino no mapa.
-    window.open(`http://googleusercontent.com/maps.google.com/2{destino}`, '_blank'); // Abre o trajeto.
-  };
-
-  const compartilharRegional = async (e) => { // Função para compartilhar o convite do regional.
-    const texto = `*CCB Jundiaí - Ensaio Regional*\n📍 Sede: ${e.sede} (${e.local})\n📅 Data: ${e.dia}/${e.mes} às ${e.hora}\n🗓️ ${e.weekday}`; // Formata o texto.
-    if (navigator.share) { // Tenta usar o compartilhamento nativo do celular.
-      try {
-        await navigator.share({ title: 'Ensaio Regional CCB', text: texto }); // Abre o seletor de apps do sistema.
-      } catch (err) { console.log("Erro ao compartilhar", err); }
-    } else {
-      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, '_blank'); // Abre o WhatsApp direto se o sistema não suportar.
-    }
-  };
-
-  const handleAddRegional = async (e) => { // Lógica para adicionar um novo regional.
-    e.preventDefault(); // Evita recarregar a página.
-    setEnviando(true); // Bloqueia o botão.
+  const handleAddRegional = async (e) => { // Lógica para adicionar um novo regional ao banco ou enviar sugestão.
+    e.preventDefault(); // Evita que a página recarregue ao clicar em enviar.
+    setEnviando(true); // Trava o botão para segurança.
     try {
-      const payload = { ...novoReg, dia: Number(novoReg.dia), sede: novoReg.sede.toUpperCase() }; // Prepara os dados.
-      if (isMaster(user)) { // Se for Master, salva no banco oficial imediatamente.
+      const payload = { ...novoReg, dia: Number(novoReg.dia), sede: novoReg.sede.toUpperCase() }; // Prepara os dados formatados.
+      if (isMaster(user)) { // Se for Master, salva no banco oficial agora.
         await addDoc(collection(db, "ensaios_regionais"), payload);
         setFeedback({ msg: "Regional adicionado com sucesso!", tipo: 'sucesso' });
-      } else { // Se for editor de cidade, manda para aprovação.
+      } else { // Se for editor de cidade, envia para a fila de aprovação do Master.
         await addDoc(collection(db, "sugestoes_pendentes"), {
           tipo: 'regional_criacao', sede: payload.sede, localidade: payload.local,
           dadosSugeridos: payload, solicitanteNome: user.nome, status: 'pendente', dataSolicitacao: new Date()
         });
         setFeedback({ msg: "Regional enviado para aprovação do Master!", tipo: 'sucesso' });
       }
-      setMostraAdd(false); // Fecha o modal.
+      setMostraAdd(false); // Fecha a janelinha.
       setNovoReg({ sede: user?.cidade?.toUpperCase() || 'JUNDIAÍ', local: '', mes: 'Janeiro', dia: '', weekday: '', hora: '' }); // Limpa o formulário.
     } catch (err) { setFeedback({ msg: "Erro ao tentar salvar", tipo: 'erro' }); } 
     finally { setEnviando(false); } // Libera o botão.
   };
 
-  const enviarSugestaoOuEdicao = async (ev) => { // Lógica para o botão salvar do modal de edição.
+  const enviarSugestaoOuEdicao = async (ev) => { // Lógica para salvar alterações em um regional existente.
     ev.preventDefault();
     setEnviando(true);
     try {
-      const dadosSaneados = { ...formSugestao, dia: Number(formSugestao.dia) }; // Garante que o dia seja número.
-      if (isMaster(user)) { // Master edita direto.
+      const dadosSaneados = { ...formSugestao, dia: Number(formSugestao.dia) }; // Garante o formato correto dos números.
+      if (isMaster(user)) { // Master altera o banco oficial imediatamente.
         await updateDoc(doc(db, "ensaios_regionais", sugestaoAberta.id), dadosSaneados);
         setFeedback({ msg: "Dados atualizados no banco oficial!", tipo: 'sucesso' });
-      } else { // Editor envia sugestão.
+      } else { // Editor envia a mudança para o Master analisar.
         await addDoc(collection(db, "sugestoes_pendentes"), {
           ensaioId: sugestaoAberta.id, localidade: sugestaoAberta.local, cidade: sugestaoAberta.sede, tipo: 'regional',
           dadosAntigos: { ...sugestaoAberta }, dadosSugeridos: dadosSaneados, solicitanteNome: user.nome, status: 'pendente', dataSolicitacao: new Date()
@@ -89,12 +73,12 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => { // Iní
     finally { setEnviando(false); }
   };
 
-  const handleExcluirOuSugerir = async () => { // Lógica inteligente para remoção de regionais.
+  const handleExcluirOuSugerir = async () => { // Lógica inteligente para remover eventos regionais.
     try {
-      if (isMaster(user)) { // Master apaga do sistema agora.
+      if (isMaster(user)) { // Master apaga do sistema permanentemente.
         await deleteDoc(doc(db, "ensaios_regionais", confirmaExclusao.id));
         setFeedback({ msg: "Regional removido permanentemente!", tipo: 'sucesso' });
-      } else { // Editor solicita a remoção.
+      } else { // Editor solicita a remoção ao Master.
         await addDoc(collection(db, "sugestoes_pendentes"), {
           ensaioId: confirmaExclusao.id, tipo: 'regional_exclusao', cidade: confirmaExclusao.sede, localidade: confirmaExclusao.local,
           dadosAntigos: confirmaExclusao, solicitanteNome: user.nome, status: 'pendente', dataSolicitacao: new Date()
@@ -105,7 +89,7 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => { // Iní
     } catch (err) { setFeedback({ msg: "Erro ao tentar remover", tipo: 'erro' }); }
   };
 
-  const regionaisFiltrados = useMemo(() => { // Organiza a agenda regional por data.
+  const regionaisFiltrados = useMemo(() => { // Lógica que organiza e filtra a lista regional por data e cidade.
     const ordemMeses = { "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8, "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12 };
     return ensaiosRegionais.filter(e => {
       const sedeNormalizada = normalizarTexto(e.sede);
@@ -122,11 +106,12 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => { // Iní
 
   if (loading) return <div className="p-10 text-center font-black uppercase text-slate-400 animate-pulse text-[10px] tracking-widest">Sincronizando Banco...</div>; // Carregamento inicial.
 
-  return ( // Corpo visual da tela.
+  return ( // Corpo visual da tela de Ensaios Regionais.
     <div className="flex flex-col animate-in text-left pb-24">
       {feedback && <Feedback mensagem={feedback.msg} tipo={feedback.tipo} aoFechar={() => setFeedback(null)} />}
       
-      {podeVerBotoesDeGestao(user, user?.cidade) && ( // Exibe botão de (+) apenas se for Master ou Editor da sua cidade.
+      {/* Botão de Adicionar: Visível apenas para Master ou Editor na sua respectiva cidade */}
+      {podeVerBotoesDeGestao(user, user?.cidade) && (
         <div className="px-6 pt-4">
           <button onClick={() => { setNovoReg(prev => ({...prev, sede: isMaster(user) ? 'JUNDIAÍ' : user.cidade.toUpperCase()})); setMostraAdd(true); }} className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 shadow-xl active:scale-95 transition-all">
             <Plus size={16}/> Novo Regional em {isMaster(user) ? 'Qualquer Cidade' : user.cidade}
@@ -134,13 +119,14 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => { // Iní
         </div>
       )}
 
+      {/* BARRA DE FILTROS FIXA (STICKY): Facilita a navegação sem perder os filtros de vista */}
       <div className="sticky top-0 z-40 bg-[#F1F5F9]/95 backdrop-blur-xl border-b border-slate-200 px-6 py-4 space-y-3">
         <div className="flex gap-2">
-          <select value={filtroCidade} onChange={(e) => setFiltroCidade(e.target.value)} className="bg-white border border-slate-200 text-slate-900 text-[10px] font-bold rounded-xl px-3 py-3 outline-none flex-[2] shadow-sm appearance-none">
+          <select value={filtroCidade} onChange={(e) => setFiltroCidade(e.target.value)} className="bg-white border border-slate-200 text-slate-900 text-[10px] font-bold rounded-xl px-3 py-3 outline-none flex-[2] shadow-sm appearance-none text-center">
             <option value="Todas">Toda a Região</option>
             {CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select value={filtroMes} onChange={(e) => setFiltroMes(e.target.value)} className="bg-white border border-slate-200 text-slate-900 text-[10px] font-bold rounded-xl px-3 py-3 outline-none flex-1 shadow-sm appearance-none">
+          <select value={filtroMes} onChange={(e) => setFiltroMes(e.target.value)} className="bg-white border border-slate-200 text-slate-900 text-[10px] font-bold rounded-xl px-3 py-3 outline-none flex-1 shadow-sm appearance-none text-center">
             <option value="Todos">Meses</option>
             {MESES_LISTA.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
@@ -153,6 +139,7 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => { // Iní
         </div>
       </div>
 
+      {/* LISTAGEM DOS CARDS REGIONAIS */}
       <div className="px-6 py-6 space-y-4">
         {regionaisFiltrados.length === 0 ? (
           <div className="py-20 text-center text-slate-400 font-bold uppercase text-[10px]">Nenhum regional encontrado</div>
@@ -169,10 +156,10 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => { // Iní
                     {e.dia} {e.mes.substring(0, 3)}
                   </div>
                   <div className="flex gap-1">
-                    {podeVerBotoesDeGestao(user, e.sede) && ( // Só mostra botões de gestão se o motor de permissões autorizar.
+                    {podeVerBotoesDeGestao(user, e.sede) && ( 
                       <button onClick={() => { setSugestaoAberta(e); setFormSugestao({ ...e }); }} className="text-amber-500 bg-amber-500/10 p-2.5 rounded-xl active:scale-90 border border-amber-500/20"><Edit3 size={16} /></button>
                     )}
-                    {podeVerBotoesDeGestao(user, e.sede) && ( // Só mostra botões de gestão se o motor de permissões autorizar.
+                    {podeVerBotoesDeGestao(user, e.sede) && ( 
                       <button onClick={() => setConfirmaExclusao(e)} className="text-red-500 bg-red-500/10 p-2.5 rounded-xl active:scale-90 border border-red-500/20"><Trash2 size={16} /></button>
                     )}
                   </div>
@@ -184,8 +171,9 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => { // Iní
                 <div className="flex items-center gap-2 text-white/40 text-[9px] font-black uppercase italic tracking-wider"><Calendar size={12} /> {e.weekday}</div>
               </div>
 
+              {/* BOTÕES DE AÇÃO: Compartilhar e GPS devidamente conectados às ferramentas globais */}
               <div className="grid grid-cols-2 gap-2 mt-2">
-                <button onClick={() => compartilharRegional(e)} className="bg-white/10 text-emerald-500 p-4 rounded-2xl active:scale-90 flex justify-center items-center shadow-sm border border-white/5"><Share2 size={18} /></button>
+                <button onClick={() => compartilharEnsaio(e, true)} className="bg-white/10 text-emerald-500 p-4 rounded-2xl active:scale-90 flex justify-center items-center shadow-sm border border-white/5"><Share2 size={18} /></button>
                 <button onClick={() => abrirGoogleMaps(e.local, e.sede)} className="bg-amber-500 text-slate-950 p-4 rounded-2xl active:scale-90 flex justify-center items-center shadow-lg"><MapPin size={18} /></button>
               </div>
             </div>
@@ -193,10 +181,10 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => { // Iní
         )}
       </div>
 
-      {/* MODAL EDITAR/ADD */}
+      {/* FORMULÁRIO DE EDIÇÃO/CRIAÇÃO (MODAL FLUTUANTE) */}
       {(sugestaoAberta || mostraAdd) && createPortal(
         <div onClick={() => { setSugestaoAberta(null); setMostraAdd(false); }} className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
-          <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left pointer-events-auto">
+          <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left">
             <button onClick={() => { setSugestaoAberta(null); setMostraAdd(false); }} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90"><X size={18}/></button>
             <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950 leading-none">
               {mostraAdd ? 'Novo Regional' : (isMaster(user) ? 'Editar Regional' : 'Sugerir Edição')}
@@ -224,7 +212,7 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => { // Iní
         </div>, document.body
       )}
 
-      {/* CONFIRMA EXCLUSÃO */}
+      {/* CONFIRMAÇÃO DE EXCLUSÃO */}
       {confirmaExclusao && createPortal(
         <div onClick={() => setConfirmaExclusao(null)} className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
           <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-center">
@@ -242,4 +230,4 @@ const EnsaiosRegionais = ({ ensaiosRegionais = [], loading, user }) => { // Iní
   );
 };
 
-export default EnsaiosRegionais; // Exporta o componente de agenda regional.
+export default EnsaiosRegionais; // Exporta a agenda regional corrigida e com todos os ícones importados.

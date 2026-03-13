@@ -5,14 +5,26 @@
  * Ele protege o App garantindo que cada irmão acesse apenas o que lhe compete. // Explica o valor para a Regional.
  */ // Fim do comentário.
 
-// 1. Definição estrita dos cargos que o sistema reconhece // Organização dos nomes oficiais.
-export const CARGOS = { // Lista oficial de cargos que o banco de dados pode conter.
+// 🛠️ NOVO: Lista Única e Oficial de Cargos/Ministérios para flegar em Reuniões e Cadastros.
+export const LISTA_CARGOS_OFICIAL = [ // Início da lista que o sistema usará para criar os botões de seleção.
+  "Encarregado Regional", // Membro da banca regional.
+  "Encarregado Local", // Responsável pela música na comum.
+  "Examinadora", // Responsável pelas organistas.
+  "Instrutor", // Irmão que ensina os alunos.
+  "Organista", // Irmã que toca o órgão nos cultos e ensaios.
+  "Ancião", // Liderança espiritual.
+  "Secretário da Música Regional", // O Maestro administrador.
+  "Secretário da Música Cidade" // O zelador musical da sede.
+]; // Fim da lista oficial.
+
+// 1. Definição estrita dos cargos que o sistema reconhece // Organização dos nomes oficiais para lógica.
+export const CARGOS = { // Objeto para o código comparar nomes sem erro de digitação.
   REGIONAL: "Secretário da Música Regional", // Cargo máximo: o Maestro com controle total.
   ANCIAO: "Ancião", // Cargo de liderança: vê gráficos, mas não mexe na configuração técnica.
   ENC_REGIONAL: "Encarregado Regional", // Cargo de liderança: tem acesso à sala de estatísticas (Dashboard).
   EXAMINADORA: "Examinadora", // Cargo operacional: cuida dos contatos da sua cidade.
   SEC_CIDADE: "Secretário da Música Cidade" // Cargo operacional: focado na zeladoria da sua sede.
-}; // Fim da lista de cargos.
+}; // Fim da lista de cargos para lógica interna.
 
 /** // Início do comentário explicativo.
  * 2. Motor de Identificação de Nível // O "Cérebro" que reconhece o crachá do usuário.
@@ -84,8 +96,10 @@ export const podeVerBotoesDeGestao = (usuario, cidadeDoCard) => { // Decide se m
   if (nivel === 'master') return true; // O Master é onipresente: vê e edita todas as cidades.
   if (!usuario || nivel === 'visitante') return false; // Visitante nunca vê botões de gestão.
   
-  const minhaCidade = normalizarTexto(usuario.cidade); // Pega a cidade do músico e limpa o texto.
-  const cidadeAlvo = normalizarTexto(cidadeDoCard); // Pega a cidade do evento e limpa o texto.
+  // Nota: A função 'normalizarTexto' precisa ser importada ou estar acessível.
+  // Como este arquivo é de constantes puras, a comparação deve ser feita com cuidado.
+  const minhaCidade = usuario.cidade?.toLowerCase().trim(); // Pega a cidade do músico e padroniza.
+  const cidadeAlvo = cidadeDoCard?.toLowerCase().trim(); // Pega a cidade do evento e padroniza.
   
   return minhaCidade === cidadeAlvo; // Só libera o botão se o músico pertencer àquela cidade específica.
 }; // Fecha a função de territorialidade.
