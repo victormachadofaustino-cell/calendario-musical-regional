@@ -1,11 +1,12 @@
 // src/constants/permissions.js // Localização do arquivo no projeto para o sistema se encontrar.
+import { normalizarTexto } from './comuns'; // 👈 AFINAÇÃO: Importa a função que remove acentos e resolve o erro 'Paulista vs Pta'.
 
 /** // Início do comentário de documentação técnica.
  * Este arquivo centraliza todas as regras de acesso do sistema. // Define o objetivo: ser o único lugar de regras.
  * Ele protege o App garantindo que cada irmão acesse apenas o que lhe compete. // Explica o valor para a Regional.
  */ // Fim do comentário.
 
-// 🛠️ NOVO: Lista Única e Oficial de Cargos/Ministérios para flegar em Reuniões e Cadastros.
+// 🛠️ LISTA ÚNICA: Cargos oficiais para flegar em Reuniões e Cadastros.
 export const LISTA_CARGOS_OFICIAL = [ // Início da lista que o sistema usará para criar os botões de seleção.
   "Encarregado Regional", // Membro da banca regional.
   "Encarregado Local", // Responsável pela música na comum.
@@ -34,7 +35,7 @@ export const obterNivelAcesso = (usuario) => { // Função que analisa o perfil 
   if (!usuario) return 'visitante'; // Se não houver login, o sistema o trata como alguém da plateia (visitante).
   
   // REGRA DE OURO: Secretário Regional ou fleg de 'master' no banco ganha poder total.
-  if (usuario.cargo === CARGOS.REGIONAL || usuario.nivel === 'master') { // Verifica se é o cargo de Maestro Regional.
+  if (usuario.cargo === CARGOS.REGIONAL || usuario.nivel === 'master') { // Verifica se é o cargo de Maestro Regional ou fleg Master.
     return 'master'; // Retorna o nível de autoridade máxima.
   } // Fecha a verificação de Master.
   
@@ -96,12 +97,11 @@ export const podeVerBotoesDeGestao = (usuario, cidadeDoCard) => { // Decide se m
   if (nivel === 'master') return true; // O Master é onipresente: vê e edita todas as cidades.
   if (!usuario || nivel === 'visitante') return false; // Visitante nunca vê botões de gestão.
   
-  // Nota: A função 'normalizarTexto' precisa ser importada ou estar acessível.
-  // Como este arquivo é de constantes puras, a comparação deve ser feita com cuidado.
-  const minhaCidade = usuario.cidade?.toLowerCase().trim(); // Pega a cidade do músico e padroniza.
-  const cidadeAlvo = cidadeDoCard?.toLowerCase().trim(); // Pega a cidade do evento e padroniza.
+  // 🛠️ CORREÇÃO: Agora usamos a Normalização para que 'Campo Limpo Paulista' seja igual a 'Campo Limpo Pta'.
+  const minhaCidadeLimpa = normalizarTexto(usuario.cidade || ""); // Limpa o nome da cidade no cadastro do músico.
+  const cidadeDoCardLimpa = normalizarTexto(cidadeDoCard || ""); // Limpa o nome da cidade que está no ensaio/contato.
   
-  return minhaCidade === cidadeAlvo; // Só libera o botão se o músico pertencer àquela cidade específica.
+  return minhaCidadeLimpa === cidadeDoCardLimpa; // Libera o acesso apenas se as cidades limpas forem idênticas.
 }; // Fecha a função de territorialidade.
 
 /** // Início do comentário explicativo.

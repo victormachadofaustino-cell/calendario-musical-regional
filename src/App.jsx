@@ -61,74 +61,69 @@ function App() { // Início da função principal que motoriza o aplicativo.
   };
 
   useEffect(() => { // Monitora novos tickets na lâmpada (suporte) para o Master.
-    if (!isMaster(userData)) { setTicketsCount(0); return; } 
-    const q = query(collection(db, "feedback_usuarios"), where("status", "==", "pendente")); 
-    const unsub = onSnapshot(q, (snap) => setTicketsCount(snap.size)); 
-    return () => unsub(); 
-  }, [userData]); 
+    if (!isMaster(userData)) { setTicketsCount(0); return; } // Se não for Master, zera a contagem.
+    const q = query(collection(db, "feedback_usuarios"), where("status", "==", "pendente")); // Pergunta ao banco por novos tickets.
+    const unsub = onSnapshot(q, (snap) => setTicketsCount(snap.size)); // Ouve em tempo real a quantidade de tickets.
+    return () => unsub(); // Limpa o ouvinte ao fechar.
+  }, [userData]); // Roda sempre que o perfil do usuário carregar.
 
   useEffect(() => { // Segurança: expulsa usuários deslogados de páginas restritas.
-    if (!user) { 
-      const paginasRestritas = ['dashboard', 'reunioes']; 
-      if (paginasRestritas.includes(modulo) || showPainelMaster) { 
-        setModulo('hub'); 
-        setShowPainelMaster(false); 
+    if (!user) { // Se o usuário deslogar...
+      const paginasRestritas = ['dashboard', 'reunioes']; // ...e estiver em uma tela proibida...
+      if (paginasRestritas.includes(modulo) || showPainelMaster) { // ...manda ele de volta para o Hub.
+        setModulo('hub'); // Volta para a tela inicial.
+        setShowPainelMaster(false); // Fecha o painel administrativo.
       }
     }
-  }, [user, modulo, showPainelMaster]); 
+  }, [user, modulo, showPainelMaster]); // Monitora mudanças de login e de página.
 
   const mudarModulo = (novoModulo) => { // Função central para trocar de página e definir a direção da animação.
-    const indexAtual = ORDEM_MODULOS.indexOf(modulo); 
-    const indexNovo = ORDEM_MODULOS.indexOf(novoModulo); 
+    const indexAtual = ORDEM_MODULOS.indexOf(modulo); // Posição da tela atual na fila.
+    const indexNovo = ORDEM_MODULOS.indexOf(novoModulo); // Posição da nova tela na fila.
     
     // Se o usuário clicar no Dashboard, ele não está no array, então tratamos a direção manualmente.
-    if (novoModulo === 'dashboard') setDirecao(1);
-    else if (modulo === 'dashboard') setDirecao(-1);
-    else setDirecao(indexNovo > indexAtual ? 1 : -1); 
+    if (novoModulo === 'dashboard') setDirecao(1); // Desliza para frente.
+    else if (modulo === 'dashboard') setDirecao(-1); // Desliza para trás.
+    else setDirecao(indexNovo > indexAtual ? 1 : -1); // Define se a tela vem da esquerda ou direita.
 
-    if (novoModulo !== 'locais') setDiaFiltro(''); 
-    setModulo(novoModulo); 
+    if (novoModulo !== 'locais') setDiaFiltro(''); // Limpa filtros de data se mudar de tela.
+    setModulo(novoModulo); // Efetiva a troca da tela.
   };
 
   const aoFinalizarToque = () => { // Lógica para navegar entre as telas arrastando o dedo na tela (swipe).
-    if (!touchStartX.current || !touchEndX.current) return; 
-    const distanciaX = touchStartX.current - touchEndX.current; 
-    const indexAtual = ORDEM_MODULOS.indexOf(modulo); 
+    if (!touchStartX.current || !touchEndX.current) return; // Se não houve movimento, ignora.
+    const distanciaX = touchStartX.current - touchEndX.current; // Calcula o tamanho do arrasto.
+    const indexAtual = ORDEM_MODULOS.indexOf(modulo); // Pega a posição da tela atual.
 
     // Se estiver no Dashboard, o arrasto lateral fica desabilitado para não conflitar com os gráficos.
-    if (modulo === 'dashboard') return;
+    if (modulo === 'dashboard') return; //
 
-    if (distanciaX > 70 && indexAtual !== -1 && indexAtual < ORDEM_MODULOS.length - 1) { 
-      // Arrastou para a esquerda: AVANÇAR
-      const proximo = ORDEM_MODULOS[indexAtual + 1]; 
-      
-      // Validação de Segurança: Só avança para Reuniões se estiver logado.
-      if (proximo === 'reunioes' && !user) return; 
-      
-      mudarModulo(proximo); 
-    } else if (distanciaX < -70 && indexAtual > 0) { 
-      // Arrastou para a direita: VOLTAR
-      const anterior = ORDEM_MODULOS[indexAtual - 1];
-      mudarModulo(anterior); 
+    if (distanciaX > 70 && indexAtual !== -1 && indexAtual < ORDEM_MODULOS.length - 1) { // Arrastou para a esquerda (Avançar).
+      const proximo = ORDEM_MODULOS[indexAtual + 1]; // Identifica a próxima tela.
+      if (proximo === 'reunioes' && !user) return; // Segurança: Visitante não arrasta para Reuniões.
+      mudarModulo(proximo); // Troca de tela.
+    } else if (distanciaX < -70 && indexAtual > 0) { // Arrastou para a direita (Voltar).
+      const anterior = ORDEM_MODULOS[indexAtual - 1]; // Identifica a tela anterior.
+      mudarModulo(anterior); // Troca de tela.
     }
-    touchStartX.current = null; touchEndX.current = null; 
+    touchStartX.current = null; touchEndX.current = null; // Reseta as coordenadas do toque.
   };
 
-  const variacoesPagina = { // Configuração das animações suaves entre telas.
-    initial: (dir) => ({ opacity: 0, x: dir > 0 ? 50 : -50 }),
-    animate: { opacity: 1, x: 0 },
-    exit: (dir) => ({ opacity: 0, x: dir > 0 ? -50 : 50 }),
+  const variacoesPagina = { // Configuração técnica das animações suaves entre as trocas de módulo.
+    initial: (dir) => ({ opacity: 0, x: dir > 0 ? 50 : -50 }), // A tela nova começa invisível e levemente de lado.
+    animate: { opacity: 1, x: 0 }, // A tela nova aparece no centro.
+    exit: (dir) => ({ opacity: 0, x: dir > 0 ? -50 : 50 }), // A tela velha some deslizando para o lado oposto.
   };
 
-  if (showSplash) return <CapaEntrada aoEntrar={() => setShowSplash(false)} />; // Capa Splash inicial.
+  if (showSplash) return <CapaEntrada aoEntrar={() => setShowSplash(false)} />; // Se a capa estiver ativa, mostra ela antes de tudo.
 
-  return ( // Estrutura visual principal.
+  return ( // Montagem visual de toda a orquestra do App.
     <div className="min-h-screen bg-[#F1F5F9] flex flex-col relative"
          onTouchStart={(e) => touchStartX.current = e.targetTouches[0].clientX}
          onTouchMove={(e) => touchEndX.current = e.targetTouches[0].clientX}
          onTouchEnd={aoFinalizarToque}>
       
-      <Header 
+      <Header // Cabeçalho fixo no topo.
         modulo={modulo} 
         setModulo={mudarModulo} 
         user={user} 
@@ -155,9 +150,9 @@ function App() { // Início da função principal que motoriza o aplicativo.
             transition={{ duration: 0.3 }}
             className="w-full h-full pt-2"
           >
-            {modulo === 'hub' && (
+            {modulo === 'hub' && ( // Se o módulo for o Hub, mostra a tela de boas-vindas e botões rápidos.
               <div className="w-full py-2">
-                {user && (
+                {user && ( // Card de boas-vindas só aparece para músicos logados.
                   <div className="px-6 mb-5">
                     <div className="bg-white border border-slate-200 p-5 rounded-[2.2rem] flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-4">
                       <div className="flex items-center gap-4">
@@ -167,11 +162,11 @@ function App() { // Início da função principal que motoriza o aplicativo.
                           <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest mt-1.5">{userData?.cargo || "Colaborador"} • {userData?.cidade || "Regional"}</span>
                         </div>
                       </div>
-                      {/* BOTÃO DASHBOARD: Única porta de entrada para a sala de gráficos */}
+                      {/* BOTÃO DASHBOARD: Agora validado pelo motor de permissões. */}
                       {temAcessoAoDashboard(userData) && (
                         <button onClick={() => mudarModulo('dashboard')} className="relative p-3 bg-slate-50 text-slate-400 rounded-2xl active:scale-90 border border-slate-100 transition-all">
                           <BarChart3 size={20} />
-                          {pendenciasCount > 0 && isMaster(userData) && (
+                          {pendenciasCount > 0 && isMaster(userData) && ( // Alerta de pendências só para o Master.
                             <span className="absolute -top-1 -left-1 w-3 h-3 bg-orange-600 rounded-full border-2 border-white animate-pulse"></span>
                           )}
                         </button>
@@ -180,7 +175,7 @@ function App() { // Início da função principal que motoriza o aplicativo.
                   </div>
                 )}
 
-                <HighlightCards 
+                <HighlightCards // Cards com as próximas agendas.
                   todosEnsaios={todosEnsaios} 
                   ensaiosRegionais={ensaiosRegionaisData} 
                   reunioesData={reunioesData} 
@@ -197,10 +192,10 @@ function App() { // Início da função principal que motoriza o aplicativo.
               </div>
             )}
 
-            {/* Injeção dinâmica das telas de módulo */}
-            {modulo === 'locais' && <EnsaiosLocais todosEnsaios={todosEnsaios} diaFiltro={diaFiltro} loading={loading} user={userData} />}
-            {modulo === 'regionais' && <EnsaiosRegionais ensaiosRegionais={ensaiosRegionaisData} loading={loading} user={userData} />}
-            {modulo === 'comissao' && <Comissao encarregados={encarregadosData} examinadoras={examinadorasData} loading={loading} user={userData} />}
+            {/* Injeção dinâmica das telas de módulo - CORREÇÃO: Passando 'user' e 'userData' em todos os módulos de gestão */}
+            {modulo === 'locais' && <EnsaiosLocais todosEnsaios={todosEnsaios} diaFiltro={diaFiltro} loading={loading} user={user} userData={userData} />}
+            {modulo === 'regionais' && <EnsaiosRegionais ensaiosRegionais={ensaiosRegionaisData} loading={loading} user={user} userData={userData} />}
+            {modulo === 'comissao' && <Comissao encarregados={encarregadosData} examinadoras={examinadorasData} loading={loading} user={user} userData={userData} />}
             {modulo === 'reunioes' && <ReunioesRegionais user={userData} />}
             {modulo === 'avisos' && <Avisos user={userData} />}
             {modulo === 'dashboard' && <Dashboard todosEnsaios={todosEnsaios} ensaiosRegionais={ensaiosRegionaisData} examinadoras={examinadorasData} encarregados={encarregadosData} user={userData} />}
@@ -213,4 +208,4 @@ function App() { // Início da função principal que motoriza o aplicativo.
   );
 }
 
-export default App; // Exporta o mestre do App com a nova sequência de deslize e dashboard isolado.
+export default App; // Exporta o mestre do App pronto para o palco.

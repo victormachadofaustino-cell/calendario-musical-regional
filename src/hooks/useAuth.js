@@ -13,45 +13,45 @@ export function useAuth() { // Função principal que será usada pelo resto do 
     let unsubUsersPendentes = null; // Espaço reservado para desligar o vigia de novos cadastros depois.
     let unsubSugestoes = null; // Espaço reservado para desligar o vigia de correções de ensaios depois.
 
-    // 1. O "Vigia da Porta" começa a trabalhar observando o login do Google/Firebase
+    // 1. O "Vigia da Porta" começa a trabalhar observando o login do músico no sistema.
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser); // Grava na memória quem é a pessoa que acabou de passar pela porta.
       
       if (currentUser) { // Se houver alguém logado...
-        // 2. Busca no banco de dados a Ficha Cadastral específica desse UID (Identidade Única)
+        // 2. Busca no banco de dados a Ficha Cadastral específica desse UID (Identidade Única).
         unsubUserData = onSnapshot(doc(db, "usuarios", currentUser.uid), (docSnap) => {
           if (docSnap.exists() && docSnap.data().ativo) { // Se o cadastro existe e o Master não inativou o irmão...
-            const data = docSnap.data(); // Pega as informações de dentro do documento.
-            setUserData(data); // Salva na memória o cargo e a cidade dele.
+            const data = docSnap.data(); // Pega as informações de dentro do documento (Cargo, Nível, etc).
+            setUserData(data); // Salva na memória o perfil completo do músico logado.
 
-            // 3. REGRA DE MAESTRO: Se o nível for 'master', ele ganha olhos especiais para ver a fila de trabalho
+            // 3. REGRA DE MAESTRO: Se o nível for 'master', ele ganha olhos especiais para ver a fila de trabalho.
             if (data.nivel === 'master') {
               
-              // Define as buscas por cadastros "pendentes" e sugestões enviadas por editores
+              // Define as buscas por cadastros "pendentes" e sugestões enviadas por editores.
               const qUsers = query(collection(db, "usuarios"), where("status", "==", "pendente"));
               const qSugestoes = collection(db, "sugestoes_pendentes");
 
-              // Variáveis temporárias para somar os dois tipos de trabalho pendente
-              let countUsers = 0;
-              let countSug = 0;
+              // Espaços de memória para guardar as contagens parciais.
+              let lastUsersCount = 0;
+              let lastSugCount = 0;
 
-              // Vigia em tempo real se novos irmãos pediram para entrar no app
+              // Vigia em tempo real se novos irmãos pediram para entrar no app.
               unsubUsersPendentes = onSnapshot(qUsers, (snapUsers) => {
-                countUsers = snapUsers.size; // Conta quantos cadastros novos existem.
-                setPendenciasCount(countUsers + countSug); // Atualiza o total de notificações do painel.
-              }, (err) => console.log("Aguardando permissões de usuários..."));
+                lastUsersCount = snapUsers.size; // Conta quantos cadastros novos existem.
+                setPendenciasCount(lastUsersCount + lastSugCount); // Soma com as sugestões e atualiza o painel do Master.
+              }, (err) => console.log("Erro ao vigiar usuários pendentes."));
 
-              // Vigia em tempo real se algum editor sugeriu mudar o horário ou local de um ensaio
+              // Vigia em tempo real se algum editor sugeriu mudar dados de um ensaio.
               unsubSugestoes = onSnapshot(qSugestoes, (snapSug) => {
-                countSug = snapSug.size; // Conta quantas sugestões de mudança existem.
-                setPendenciasCount(countUsers + countSug); // Atualiza o total de notificações do painel.
-              }, (err) => console.log("Aguardando permissões de sugestões..."));
+                lastSugCount = snapSug.size; // Conta quantas sugestões de mudança existem.
+                setPendenciasCount(lastUsersCount + lastSugCount); // Soma com os usuários e atualiza o painel do Master.
+              }, (err) => console.log("Erro ao vigiar sugestões pendentes."));
 
             } else {
-              setPendenciasCount(0); // Se for um músico comum, o contador de trabalho administrativo fica em zero.
+              setPendenciasCount(0); // Se não for Master, o contador de trabalho administrativo fica em zero.
             }
           } else {
-            // SEGURANÇA CRÍTICA: Se o Master inativar o usuário enquanto ele usa o app, o sistema o expulsa na hora.
+            // SEGURANÇA CRÍTICA: Se o Master inativar o usuário no banco, o sistema o expulsa do palco na hora.
             signOut(auth);
             setUserData(null);
           }
@@ -66,14 +66,14 @@ export function useAuth() { // Função principal que será usada pelo resto do 
       }
     });
 
-    // Função de limpeza: Quando o app é fechado, paramos de ouvir o banco para economizar bateria e dados do celular.
+    // Função de limpeza: Quando o músico fecha o app, desligamos todos os vigias para poupar bateria e internet.
     return () => {
       unsubAuth(); // Para de vigiar o login.
       if (unsubUserData) unsubUserData(); // Para de vigiar o perfil.
       if (unsubUsersPendentes) unsubUsersPendentes(); // Para de vigiar novos cadastros.
       if (unsubSugestoes) unsubSugestoes(); // Para de vigiar sugestões.
     };
-  }, []); // O colchete vazio indica que essa vigia começa apenas uma vez ao abrir o aplicativo.
+  }, []); // O colchete vazio garante que essa rotina comece apenas uma vez ao ligar o aplicativo.
 
   return { user, userData, pendenciasCount }; // Entrega as informações prontas para o Maestro (App.jsx) usar nas telas.
 }

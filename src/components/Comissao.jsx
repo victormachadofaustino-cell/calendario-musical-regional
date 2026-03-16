@@ -1,139 +1,139 @@
-import React, { useState, useMemo } from 'react'; // Importa as ferramentas para criar a tela e gerenciar o que o usuário vê.
-import { createPortal } from 'react-dom'; // Permite criar janelas flutuantes (modais) que ficam por cima de tudo.
-import { db } from '../firebaseConfig'; // Importa a conexão com o banco de dados Firebase.
-import { collection, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore'; // Ferramentas para ler, gravar e apagar dados no banco.
-import { Search, Phone, MessageCircle, X, Plus, Trash2, Edit3, Send, Copy, Check, Share2 } from 'lucide-react'; // Ícones para os botões da interface.
-import Feedback from './Feedback'; // Componente que mostra avisos de sucesso ou erro no topo.
+import React, { useState, useMemo } from 'react'; // Ferramenta base para criar a tela e gerenciar o que o usuário vê.
+import { createPortal } from 'react-dom'; // Permite desenhar janelas flutuantes (modais) que ficam por cima de tudo.
+import { db } from '../firebaseConfig'; // Importa a conexão com o banco de dados Firebase oficial.
+import { collection, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore'; // Ferramentas para ler, gravar e apagar dados no banco de registros.
+import { Search, Phone, MessageCircle, X, Plus, Trash2, Edit3, Send, Copy, Check, Share2 } from 'lucide-react'; // Ícones modernos para os botões da interface.
+import Feedback from './Feedback'; // Componente que mostra avisos de sucesso ou erro no topo da tela.
 
 // Importação das constantes, funções centrais e motor de permissões
-import { CIDADES_LISTA } from '../constants/cidades'; // Lista oficial de cidades da regional.
-import { normalizarTexto } from '../constants/comuns'; // Função que limpa textos para comparação (remove acentos e espaços).
-import { podeVerBotoesDeGestao, isMaster, obterNivelAcesso } from '../constants/permissions'; // Novo motor de regras de acesso.
+import { CIDADES_LISTA } from '../constants/cidades'; // Lista oficial de cidades da nossa regional.
+import { normalizarTexto } from '../constants/comuns'; // Função que limpa textos para comparação (resolve o erro Paulista vs Pta).
+import { podeVerBotoesDeGestao, isMaster } from '../constants/permissions'; // Novo motor de regras de acesso territorial.
 
-const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => { // Início do componente de contatos.
+const Comissao = ({ encarregados = [], examinadoras = [], loading, user, userData }) => { // Início do componente, agora recebendo o crachá completo (userData).
   const [aba, setAba] = useState('regionais'); // Controla se estamos vendo a lista de Encarregados ou Examinadoras.
-  const [busca, setBusca] = useState(''); // Guarda o que o usuário digita na lupa de busca.
-  const [filtroCidade, setFiltroCidade] = useState('Todas'); // Guarda a cidade escolhida no seletor.
-  const [feedback, setFeedback] = useState(null); // Controla a mensagem de alerta (Ex: "Número copiado!").
-  const [confirmaExclusao, setConfirmaExclusao] = useState(null); // Guarda qual contato o usuário quer apagar.
-  const [mostraAdd, setMostraAdd] = useState(false); // Controla a abertura do formulário de novo cadastro.
+  const [busca, setBusca] = useState(''); // Guarda o texto que o usuário digita na lupa de busca.
+  const [filtroCidade, setFiltroCidade] = useState('Todas'); // Guarda a cidade escolhida no seletor de filtros.
+  const [feedback, setFeedback] = useState(null); // Controla a mensagem de alerta flutuante (Ex: "Número copiado!").
+  const [confirmaExclusao, setConfirmaExclusao] = useState(null); // Guarda qual contato o usuário quer apagar para pedir confirmação.
+  const [mostraAdd, setMostraAdd] = useState(false); // Controla se o formulário de novo cadastro deve aparecer.
   const [editandoMembro, setEditandoMembro] = useState(null); // Guarda os dados do contato sendo editado pelo Master.
   const [sugestaoAberta, setSugestaoAberta] = useState(null); // Guarda os dados do contato sendo sugerido pelo Editor.
-  const [enviando, setEnviando] = useState(false); // Impede envios duplicados durante o processamento.
-  const [copiadoId, setCopiadoId] = useState(null); // Controla o ícone de "Check" ao copiar um número.
+  const [enviando, setEnviando] = useState(false); // Travinha de segurança que impede envios duplicados enquanto o banco processa.
+  const [copiadoId, setCopiadoId] = useState(null); // Controla a mudança do ícone para um "Check" verde ao copiar o número.
 
-  const nivelAcesso = obterNivelAcesso(user); // Identifica se o usuário é Master, Editor ou Visitante.
-  const COLEC_REGIONAIS = "encarregados_regionais"; // Nome da gaveta no banco para Encarregados.
-  const COLEC_EXAMINADORAS = "examinadoras"; // Nome da gaveta no banco para Examinadoras.
-  const listaAtual = aba === 'regionais' ? encarregados : examinadoras; // Decide qual lista mostrar baseado na aba.
+  const COLEC_REGIONAIS = "encarregados_regionais"; // Nome técnico da pasta de Encarregados no banco de dados.
+  const COLEC_EXAMINADORAS = "examinadoras"; // Nome técnico da pasta de Examinadoras no banco de dados.
+  const listaAtual = aba === 'regionais' ? encarregados : examinadoras; // Escolhe qual lista mostrar na tela baseado na aba clicada.
 
-  const [formMembro, setFormMembro] = useState({ name: '', city: 'Jundiaí', contact: '' }); // Dados para novos cadastros.
+  const [formMembro, setFormMembro] = useState({ name: '', city: 'Jundiaí', contact: '' }); // Espaço de memória para novos cadastros.
 
-  const copiarParaClipboard = (texto, id) => { // Função para copiar o telefone com um clique.
-    navigator.clipboard.writeText(texto); // Comando do sistema para copiar texto.
-    setFeedback({ msg: "Número copiado!", tipo: 'sucesso' }); // Mostra aviso na tela.
-    setCopiadoId(id); // Muda o ícone temporariamente para um check.
-    setTimeout(() => setCopiadoId(null), 2000); // Volta ao ícone original após 2 segundos.
+  const copiarParaClipboard = (texto, id) => { // Função para copiar o telefone para a memória do celular com um toque.
+    navigator.clipboard.writeText(texto); // Comando do sistema que realiza a cópia do texto.
+    setFeedback({ msg: "Número copiado!", tipo: 'sucesso' }); // Avisa o usuário que a cópia funcionou.
+    setCopiadoId(id); // Troca o ícone de copiar por um de check.
+    setTimeout(() => setCopiadoId(null), 2000); // Faz o ícone voltar ao original após 2 segundos.
   };
 
-  const compartilharContato = async (item) => { // Função para enviar o contato para outra pessoa.
-    const texto = `*Contato CCB Regional Jundiaí*\n👤 Nome: ${item.name}\n📍 Cidade: ${item.city || item.cidade}\n📱 Tel: ${item.contact}`; // Formata a mensagem.
-    if (navigator.share) { // Tenta usar o compartilhamento do celular.
+  const compartilharContato = async (item) => { // Função para enviar os dados do contato para outra pessoa.
+    const texto = `*Contato CCB Regional Jundiaí*\n👤 Nome: ${item.name}\n📍 Cidade: ${item.city || item.cidade}\n📱 Tel: ${item.contact}`; // Prepara a mensagem formatada.
+    if (navigator.share) { // Tenta usar a janelinha de compartilhamento oficial do celular.
       try {
-        await navigator.share({ title: 'Contato CCB', text: texto }); // Abre janelinha do sistema.
+        await navigator.share({ title: 'Contato CCB', text: texto }); // Abre as opções de WhatsApp, E-mail, etc.
       } catch (err) { console.log("Erro ao compartilhar", err); }
     } else {
-      const limpo = item.contact.replace(/\D/g, ''); // Remove traços do número.
-      window.open(`https://api.whatsapp.com/send?phone=55${limpo}&text=${encodeURIComponent("Olá irmão " + item.name + ", tudo bem?")}`, '_blank'); // Abre o Zap.
+      const limpo = item.contact.replace(/\D/g, ''); // Caso o celular não suporte, tenta abrir o WhatsApp direto.
+      window.open(`https://api.whatsapp.com/send?phone=55${limpo}&text=${encodeURIComponent("Olá irmão " + item.name + ", tudo bem?")}`, '_blank'); //
     }
   };
 
-  const handleAddMembro = async (e) => { // Lógica para cadastrar novo membro.
-    e.preventDefault(); // Evita recarregar a tela.
-    setEnviando(true); // Trava o botão.
+  const handleAddMembro = async (e) => { // Lógica principal para cadastrar um novo integrante na Comissão.
+    e.preventDefault(); // Impede que a página recarregue ao clicar no botão.
+    setEnviando(true); // Ativa o carregamento para evitar cliques repetidos.
     try {
-      const nomeColecao = aba === 'regionais' ? COLEC_REGIONAIS : COLEC_EXAMINADORAS; // Decide em qual gaveta salvar.
-      if (isMaster(user)) { // Se for Master, salva direto no banco oficial.
-        await addDoc(collection(db, nomeColecao), { ...formMembro, tipo: aba === 'regionais' ? 'Encarregado Regional' : 'Examinadora' });
-        setFeedback({ msg: "Membro adicionado com sucesso!", tipo: 'sucesso' });
-      } else { // Se for Editor de cidade, envia como sugestão.
-        await addDoc(collection(db, "sugestoes_pendentes"), {
-          tipo: aba === 'regionais' ? 'contato_regional_criacao' : 'contato_examinadora_criacao',
-          cidade: formMembro.city, dadosSugeridos: formMembro, solicitanteNome: user.nome, status: 'pendente', dataSolicitacao: new Date()
+      const nomeColecao = aba === 'regionais' ? COLEC_REGIONAIS : COLEC_EXAMINADORAS; // Identifica em qual pasta salvar.
+      if (isMaster(userData)) { // Se for o Master, grava o dado no banco oficial agora.
+        await addDoc(collection(db, nomeColecao), { ...formMembro, tipo: aba === 'regionais' ? 'Encarregado Regional' : 'Examinadora' }); //
+        setFeedback({ msg: "Membro adicionado com sucesso!", tipo: 'sucesso' }); // Mostra aviso de vitória.
+      } else { // Se for um colaborador de cidade, o pedido vai para a fila de análise.
+        await addDoc(collection(db, "sugestoes_pendentes"), { //
+          tipo: aba === 'regionais' ? 'contato_regional_criacao' : 'contato_examinadora_criacao', //
+          cidade: formMembro.city, dadosSugeridos: formMembro, solicitanteNome: userData?.nome || user?.email, status: 'pendente', dataSolicitacao: new Date() // CORREÇÃO: Usa o nome do perfil.
         });
-        setFeedback({ msg: "Sugestão de cadastro enviada!", tipo: 'sucesso' });
+        setFeedback({ msg: "Sugestão de cadastro enviada!", tipo: 'sucesso' }); // Avisa que o Master precisa aprovar.
       }
-      setMostraAdd(false); // Fecha o formulário.
-      setFormMembro({ name: '', city: user?.cidade || 'Jundiaí', contact: '' }); // Limpa os campos.
+      setMostraAdd(false); // Fecha o formulário de cadastro.
+      setFormMembro({ name: '', city: userData?.cidade || 'Jundiaí', contact: '' }); // Limpa os campos para o próximo uso.
     } catch (err) { setFeedback({ msg: "Erro ao salvar contato", tipo: 'erro' }); }
-    finally { setEnviando(false); } // Destrava o botão.
+    finally { setEnviando(false); } // Libera o botão novamente.
   };
 
-  const handleUpdateMembro = async (e) => { // Lógica para salvar alterações em contatos existentes.
-    e.preventDefault(); // Impede o recarregamento da página.
-    setEnviando(true); // Trava o botão para evitar múltiplos cliques.
+  const handleUpdateMembro = async (e) => { // Lógica para salvar mudanças em contatos que já existem.
+    e.preventDefault(); // Bloqueia o comportamento padrão do navegador.
+    setEnviando(true); // Inicia o estado de processamento.
     try {
-      const nomeColecao = aba === 'regionais' ? COLEC_REGIONAIS : COLEC_EXAMINADORAS; // Seleciona a coleção correta.
-      const dadosUpdate = editandoMembro || sugestaoAberta; // Identifica os dados que estão na tela de edição.
-      const payload = { name: dadosUpdate.name, city: dadosUpdate.city, contact: dadosUpdate.contact }; // Prepara o pacote de dados.
+      const nomeColecao = aba === 'regionais' ? COLEC_REGIONAIS : COLEC_EXAMINADORAS; // Verifica a coleção correta.
+      const dadosUpdate = editandoMembro || sugestaoAberta; // Identifica quais informações estão sendo editadas na tela.
+      const payload = { name: dadosUpdate.name, city: dadosUpdate.city, contact: dadosUpdate.contact }; // Organiza o pacote de dados limpos.
 
-      if (isMaster(user)) { // Se for o Master logado.
-        await updateDoc(doc(db, nomeColecao, dadosUpdate.id), payload); // Atualiza o banco de dados oficial na hora.
-        setFeedback({ msg: "Contato atualizado!", tipo: 'sucesso' }); // Aviso de sucesso.
-      } else { // Se for um Editor de cidade.
-        await addDoc(collection(db, "sugestoes_pendentes"), { // Envia o pedido para a fila do Master.
-          ensaioId: dadosUpdate.id, localidade: dadosUpdate.city, cidade: dadosUpdate.city,
-          tipo: aba === 'regionais' ? 'contato_regional' : 'contato_examinadora',
-          dadosAntigos: { name: listaAtual.find(x => x.id === dadosUpdate.id)?.name, city: listaAtual.find(x => x.id === dadosUpdate.id)?.city || listaAtual.find(x => x.id === dadosUpdate.id)?.cidade, contact: listaAtual.find(x => x.id === dadosUpdate.id)?.contact },
-          dadosSugeridos: payload, solicitanteNome: user.nome, status: 'pendente', dataSolicitacao: new Date()
+      if (isMaster(userData)) { // Se for o Master, a mudança acontece na hora no banco principal.
+        await updateDoc(doc(db, nomeColecao, dadosUpdate.id), payload); // Atualiza o registro oficial.
+        setFeedback({ msg: "Contato atualizado com sucesso!", tipo: 'sucesso' }); //
+      } else { // Se for Editor de cidade, a mudança entra na "Fila de Fomentos".
+        await addDoc(collection(db, "sugestoes_pendentes"), { //
+          ensaioId: dadosUpdate.id, localidade: dadosUpdate.city, cidade: dadosUpdate.city, //
+          tipo: aba === 'regionais' ? 'contato_regional' : 'contato_examinadora', //
+          dadosAntigos: { name: listaAtual.find(x => x.id === dadosUpdate.id)?.name, city: listaAtual.find(x => x.id === dadosUpdate.id)?.city || listaAtual.find(x => x.id === dadosUpdate.id)?.cidade, contact: listaAtual.find(x => x.id === dadosUpdate.id)?.contact }, //
+          dadosSugeridos: payload, solicitanteNome: userData?.nome || user?.email, status: 'pendente', dataSolicitacao: new Date() // CORREÇÃO: Assinatura correta.
         });
-        setFeedback({ msg: "Alteração enviada para análise!", tipo: 'sucesso' }); // Aviso de que o Master precisa aprovar.
+        setFeedback({ msg: "Alteração enviada para análise!", tipo: 'sucesso' }); //
       }
       setEditandoMembro(null); setSugestaoAberta(null); // Fecha a janela de edição.
-    } catch (err) { setFeedback({ msg: "Falha ao processar", tipo: 'erro' }); } // Aviso de falha técnica.
-    finally { setEnviando(false); } // Libera o botão.
+    } catch (err) { setFeedback({ msg: "Falha ao processar", tipo: 'erro' }); }
+    finally { setEnviando(false); } // Destrava a interface.
   };
 
-  const handleExcluirOuSugerir = async () => { // Lógica inteligente de remoção.
+  const handleExcluirOuSugerir = async () => { // Lógica inteligente de remoção de contatos.
     try {
-      const nomeColecao = aba === 'regionais' ? COLEC_REGIONAIS : COLEC_EXAMINADORAS;
-      if (isMaster(user)) { // Master apaga do banco oficial agora.
-        await deleteDoc(doc(db, nomeColecao, confirmaExclusao.id));
-        setFeedback({ msg: "Membro removido do sistema!", tipo: 'sucesso' });
-      } else { // Editor pede autorização para o Master apagar.
-        await addDoc(collection(db, "sugestoes_pendentes"), {
-          ensaioId: confirmaExclusao.id, tipo: aba === 'regionais' ? 'contato_regional_exclusao' : 'contato_examinadora_exclusao',
-          cidade: confirmaExclusao.city || confirmaExclusao.cidade, dadosAntigos: confirmaExclusao, solicitanteNome: user.nome, status: 'pendente', dataSolicitacao: new Date()
+      const nomeColecao = aba === 'regionais' ? COLEC_REGIONAIS : COLEC_EXAMINADORAS; //
+      if (isMaster(userData)) { // Master apaga do sistema permanentemente agora.
+        await deleteDoc(doc(db, nomeColecao, confirmaExclusao.id)); //
+        setFeedback({ msg: "Membro removido do sistema!", tipo: 'sucesso' }); //
+      } else { // Editor solicita a remoção ao administrador.
+        await addDoc(collection(db, "sugestoes_pendentes"), { //
+          ensaioId: confirmaExclusao.id, tipo: aba === 'regionais' ? 'contato_regional_exclusao' : 'contato_examinadora_exclusao', //
+          cidade: confirmaExclusao.city || confirmaExclusao.cidade, dadosAntigos: confirmaExclusao, solicitanteNome: userData?.nome || user?.email, status: 'pendente', dataSolicitacao: new Date() // CORREÇÃO: Nome do perfil.
         });
-        setFeedback({ msg: "Solicitação de remoção enviada!", tipo: 'sucesso' });
+        setFeedback({ msg: "Solicitação de remoção enviada!", tipo: 'sucesso' }); //
       }
-      setConfirmaExclusao(null); // Fecha o aviso.
+      setConfirmaExclusao(null); // Fecha a tela de aviso.
     } catch (err) { setFeedback({ msg: "Erro na exclusão", tipo: 'erro' }); }
   };
 
-  const filtrados = useMemo(() => { // Filtra a lista em tempo real enquanto o usuário digita.
-    return listaAtual.filter(item => {
-      const nomeMembro = item.name || "";
-      const cidadeMembro = item.city || item.cidade || "";
-      const matchBusca = normalizarTexto(nomeMembro).includes(normalizarTexto(busca));
-      const matchCidade = filtroCidade === 'Todas' || normalizarTexto(cidadeMembro) === normalizarTexto(filtroCidade);
-      return matchBusca && matchCidade;
-    }).sort((a, b) => {
-      const compNome = (a.name || "").localeCompare(b.name || "");
-      if (compNome !== 0) return compNome;
-      return (a.city || a.cidade || "").localeCompare(b.city || b.cidade || "");
+  const filtrados = useMemo(() => { // Lógica que filtra a lista enquanto o usuário escreve na busca.
+    return listaAtual.filter(item => { //
+      const nomeMembro = item.name || ""; //
+      const cidadeMembro = item.city || item.cidade || ""; //
+      const matchBusca = normalizarTexto(nomeMembro).includes(normalizarTexto(busca)); // Compara nomes ignorando acentos.
+      const matchCidade = filtroCidade === 'Todas' || normalizarTexto(cidadeMembro) === normalizarTexto(filtroCidade); // Compara cidades de forma inteligente.
+      return matchBusca && matchCidade; // Só mostra se bater nos dois filtros.
+    }).sort((a, b) => { // Organiza a lista alfabética.
+      const compNome = (a.name || "").localeCompare(b.name || ""); //
+      if (compNome !== 0) return compNome; //
+      return (a.city || a.cidade || "").localeCompare(b.city || b.cidade || ""); //
     });
-  }, [listaAtual, busca, filtroCidade]);
+  }, [listaAtual, busca, filtroCidade]); // Atualiza sempre que mudar o texto ou a cidade.
 
-  if (loading) return <div className="p-10 text-center font-black uppercase text-[10px] text-slate-400 animate-pulse">Sincronizando...</div>; // Carregamento inicial.
+  if (loading) return <div className="p-10 text-center font-black uppercase text-[10px] text-slate-400 animate-pulse">Sincronizando Contatos...</div>; // Carregamento visual inicial.
 
-  return ( // Renderização visual.
+  return ( // Montagem do corpo visual da página de Comissão.
     <div className="flex flex-col animate-in relative min-h-screen bg-[#F1F5F9]">
       {feedback && <Feedback mensagem={feedback.msg} tipo={feedback.tipo} aoFechar={() => setFeedback(null)} />}
 
       <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-slate-200 px-6 py-4 space-y-4">
-        {podeVerBotoesDeGestao(user, user?.cidade) && ( // Só mostra o botão de (+) se o usuário tiver permissão na sua cidade ou for Master.
-          <button onClick={() => { setFormMembro(prev => ({...prev, city: user.cidade})); setMostraAdd(true); }} className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 shadow-xl active:scale-95 transition-all">
+        {/* Botão de Adição: Libera o acesso usando a normalização inteligente e a cidade do perfil. */}
+        {podeVerBotoesDeGestao(userData, userData?.cidade) && ( //
+          <button onClick={() => { setFormMembro(prev => ({...prev, city: userData.cidade})); setMostraAdd(true); }} className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 shadow-xl active:scale-95 transition-all">
             <Plus size={16}/> {aba === 'regionais' ? 'Adicionar Regional' : 'Adicionar Examinadora'}
           </button>
         )}
@@ -169,10 +169,11 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => { 
               </div>
 
               <div className="flex gap-1.5 items-center">
-                {podeVerBotoesDeGestao(user, item.city || item.cidade) && ( // Regra Territorial: Só mostra botões se for o dono da cidade ou Master.
-                  <button onClick={() => { const data = { ...item, city: item.city || item.cidade }; isMaster(user) ? setEditandoMembro(data) : setSugestaoAberta(data); }} className="bg-amber-100 text-amber-600 p-3 rounded-xl border border-amber-200 active:scale-90 shadow-sm"><Edit3 size={16}/></button>
+                {/* Regra Territorial: Libera botões apenas para o dono da cidade ou Master. */}
+                {podeVerBotoesDeGestao(userData, item.city || item.cidade) && ( //
+                  <button onClick={() => { const data = { ...item, city: item.city || item.cidade }; isMaster(userData) ? setEditandoMembro(data) : setSugestaoAberta(data); }} className="bg-amber-100 text-amber-600 p-3 rounded-xl border border-amber-200 active:scale-90 shadow-sm"><Edit3 size={16}/></button>
                 )}
-                {podeVerBotoesDeGestao(user, item.city || item.cidade) && ( // Regra Territorial: Só mostra botões se for o dono da cidade ou Master.
+                {podeVerBotoesDeGestao(userData, item.city || item.cidade) && ( //
                   <button onClick={() => setConfirmaExclusao(item)} className="bg-red-50 text-red-500 p-3 rounded-xl border border-red-100 active:scale-90 shadow-sm"><Trash2 size={16}/></button>
                 )}
               </div>
@@ -190,13 +191,12 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => { 
         <div onClick={() => { setEditandoMembro(null); setSugestaoAberta(null); }} className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
           <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left">
             <button onClick={() => { setEditandoMembro(null); setSugestaoAberta(null); }} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90"><X size={18}/></button>
-            <h3 className="text-xl font-[900] uppercase italic text-slate-950 leading-none">{isMaster(user) ? 'Editar Membro' : 'Sugerir Edição'}</h3>
+            <h3 className="text-xl font-[900] uppercase italic text-slate-950 leading-none">{isMaster(userData) ? 'Editar Membro' : 'Sugerir Edição'}</h3>
             <form onSubmit={handleUpdateMembro} className="space-y-4 mt-8">
-              <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-1">Nome</span><input required type="text" value={isMaster(user) ? editandoMembro.name : sugestaoAberta.name} onChange={ev => isMaster(user) ? setEditandoMembro({...editandoMembro, name: ev.target.value}) : setSugestaoAberta({...sugestaoAberta, name: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 px-4 text-[11px] font-bold outline-none uppercase" /></div>
-              {/* CORREÇÃO: Campo de Cidade agora é editável para todos permitirem a transição de atendimento entre cidades. */}
-              <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-1">Cidade (Local de Atendimento)</span><select value={isMaster(user) ? editandoMembro.city : sugestaoAberta.city} onChange={ev => isMaster(user) ? setEditandoMembro({...editandoMembro, city: ev.target.value}) : setSugestaoAberta({...sugestaoAberta, city: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 px-4 text-[11px] font-bold outline-none">{CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-              <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-1">Telefone</span><input required type="text" value={isMaster(user) ? editandoMembro.contact : sugestaoAberta.contact} onChange={ev => isMaster(user) ? setEditandoMembro({...editandoMembro, contact: ev.target.value}) : setSugestaoAberta({...sugestaoAberta, contact: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 px-4 text-[11px] font-bold outline-none" /></div>
-              <button disabled={enviando} type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] active:scale-95 shadow-xl transition-all flex justify-center items-center gap-2 mt-4"><Send size={16}/> {enviando ? 'Gravando...' : (isMaster(user) ? 'Salvar no Banco' : 'Enviar Sugestão')}</button>
+              <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-1">Nome Completo</span><input required type="text" value={isMaster(userData) ? editandoMembro.name : sugestaoAberta.name} onChange={ev => isMaster(userData) ? setEditandoMembro({...editandoMembro, name: ev.target.value}) : setSugestaoAberta({...sugestaoAberta, name: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 px-4 text-[11px] font-bold outline-none uppercase" /></div>
+              <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-1">Cidade de Atendimento</span><select value={isMaster(userData) ? editandoMembro.city : sugestaoAberta.city} onChange={ev => isMaster(userData) ? setEditandoMembro({...editandoMembro, city: ev.target.value}) : setSugestaoAberta({...sugestaoAberta, city: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 px-4 text-[11px] font-bold outline-none">{CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+              <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-1">Telefone</span><input required type="text" value={isMaster(userData) ? editandoMembro.contact : sugestaoAberta.contact} onChange={ev => isMaster(userData) ? setEditandoMembro({...editandoMembro, contact: ev.target.value}) : setSugestaoAberta({...sugestaoAberta, contact: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 px-4 text-[11px] font-bold outline-none" /></div>
+              <button disabled={enviando} type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] active:scale-95 shadow-xl transition-all flex justify-center items-center gap-2 mt-4"><Send size={16}/> {enviando ? 'Gravando...' : (isMaster(userData) ? 'Salvar no Banco' : 'Enviar Sugestão')}</button>
             </form>
           </div>
         </div>, document.body
@@ -211,7 +211,7 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => { 
               <input required type="text" placeholder="Nome Completo" value={formMembro.name} onChange={ev => setFormMembro({...formMembro, name: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none uppercase shadow-sm" />
               <select value={formMembro.city} onChange={ev => setFormMembro({...formMembro, city: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none shadow-sm">{CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}</select>
               <input required type="text" placeholder="Telefone (ex: 11 99999-9999)" value={formMembro.contact} onChange={ev => setFormMembro({...formMembro, contact: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none shadow-sm" />
-              <button disabled={enviando} type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] active:scale-95 shadow-xl transition-all mt-4">{enviando ? 'Enviando...' : (isMaster(user) ? 'Cadastrar Agora' : 'Sugerir Cadastro')}</button>
+              <button disabled={enviando} type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] active:scale-95 shadow-xl transition-all mt-4">{enviando ? 'Enviando...' : (isMaster(userData) ? 'Cadastrar Agora' : 'Sugerir Cadastro')}</button>
             </form>
           </div>
         </div>, document.body
@@ -222,9 +222,9 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => { 
           <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 text-center animate-in zoom-in-95 shadow-2xl">
             <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6"><Trash2 size={32}/></div>
             <h3 className="text-lg font-black uppercase text-slate-950 tracking-tighter leading-tight">Remover Membro?</h3>
-            <p className="text-slate-400 text-[10px] font-bold uppercase mt-2">{isMaster(user) ? "A exclusão no banco oficial será permanente." : "Seu pedido de exclusão será enviado ao Master."}</p>
+            <p className="text-slate-400 text-[10px] font-bold uppercase mt-2">{isMaster(userData) ? "A exclusão no banco oficial será permanente." : "Seu pedido de exclusão será enviado ao Master."}</p>
             <div className="flex flex-col gap-2 mt-8">
-              <button onClick={handleExcluirOuSugerir} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black uppercase text-[10px] active:scale-95 shadow-lg shadow-red-200">{isMaster(user) ? "Confirmar Exclusão" : "Pedir Exclusão"}</button>
+              <button onClick={handleExcluirOuSugerir} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black uppercase text-[10px] active:scale-95 shadow-lg shadow-red-200">{isMaster(userData) ? "Confirmar Exclusão" : "Pedir Exclusão"}</button>
               <button onClick={() => setConfirmaExclusao(null)} className="w-full bg-slate-100 text-slate-400 py-4 rounded-2xl font-black text-[10px] uppercase">Cancelar</button>
             </div>
           </div>
@@ -234,4 +234,4 @@ const Comissao = ({ encarregados = [], examinadoras = [], loading, user }) => { 
   );
 };
 
-export default Comissao; // Exporta a tela de contatos regionais e examinadoras com suporte a transição de cidade.
+export default Comissao; // Exporta a lista de contatos afinada com suporte a transição de cidades e assinaturas de perfil.
