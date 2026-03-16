@@ -1,128 +1,187 @@
-import React, { useState, useEffect } from 'react'; // Importa a base do React para criar o componente.
-import { createPortal } from 'react-dom'; // Importa o portal para renderizar o modal por cima de tudo.
-import { db } from '../firebaseConfig'; // Importa a conexão com o banco de dados.
-import { collection, addDoc, query, where, orderBy, onSnapshot } from 'firebase/firestore'; // Ferramentas de dados do Firebase.
-import { Lightbulb, Send, X, Clock } from 'lucide-react'; // Ícones visuais.
-import { motion, AnimatePresence } from 'framer-motion'; // Ferramentas de animação.
+import React, { useState, useEffect } from 'react'; // Importa a base do React para criar o componente e gerenciar memória.
+import { createPortal } from 'react-dom'; // Importa o portal para renderizar o modal por cima de toda a interface do app.
+import { db } from '../firebaseConfig'; // Importa a conexão oficial com o banco de dados da Regional.
+import { collection, addDoc, query, where, orderBy, onSnapshot } from 'firebase/firestore'; // Ferramentas para enviar e ler dados em tempo real.
+import { Lightbulb, Send, X, Clock, MessageSquare, AlertCircle, Filter, CheckCircle2 } from 'lucide-react'; // Ícones visuais para suporte e filtragem.
+import { motion, AnimatePresence } from 'framer-motion'; // Biblioteca para fazer o modal subir e descer suavemente.
 
-const Tickets = ({ user, userData, moduloAtual, titulosModulos }) => { // Inicia o componente com os dados necessários.
-  const [showFeedback, setShowFeedback] = useState(false); // Controla se a janelinha está aberta.
-  const [abaFeedback, setAbaFeedback] = useState('novo'); // Alterna entre Novo e Histórico.
-  const [tipoFeedback, setTipoFeedback] = useState('sugestao'); // Categoria do ticket.
-  const [textoFeedback, setTextoFeedback] = useState(''); // O que o usuário escreve.
-  const [meusFeedbacks, setMeusFeedbacks] = useState([]); // Lista de tickets anteriores.
-  const [enviandoFeedback, setEnviandoFeedback] = useState(false); // Trava de segurança no envio.
+// Este componente é a "Lâmpada": agora maior, com filtros e exibição de datas para o irmão.
+const Tickets = ({ user, userData, moduloAtual, titulosModulos }) => { 
+  const [showFeedback, setShowFeedback] = useState(false); // Controla se a janelinha do suporte está aberta na tela.
+  const [abaFeedback, setAbaFeedback] = useState('novo'); // Alterna entre a tela de "Escrever Novo" e "Meus Chamados".
+  const [tipoFeedback, setTipoFeedback] = useState('sugestao'); // Categoria do ticket (Bug, Ideia ou Elogio).
+  const [textoFeedback, setTextoFeedback] = useState(''); // Guarda o texto que o irmão está digitando.
+  const [meusFeedbacks, setMeusFeedbacks] = useState([]); // Lista de tickets que este irmão já enviou.
+  const [enviandoFeedback, setEnviandoFeedback] = useState(false); // Trava de segurança no botão para evitar cliques duplos.
+  const [filtroHistorico, setFiltroHistorico] = useState('todos'); // Estado para filtrar entre abertos e concluídos no histórico.
 
-  useEffect(() => { // Busca o histórico apenas se houver músico logado.
-    if (!user) { // Se for visitante...
-        setMeusFeedbacks([]); // Limpa a lista de mensagens.
-        return; // Encerra a busca.
+  // 1. ESCUTA O HISTÓRICO: Busca os tickets deste usuário específico em tempo real.
+  useEffect(() => { 
+    if (!user) { // Se não houver login, limpa a lista.
+        setMeusFeedbacks([]); 
+        return; 
     }
-    const q = query( // Prepara a consulta ao banco.
-      collection(db, "feedback_usuarios"), // Pasta de feedbacks.
-      where("userId", "==", user.uid), // Filtra pelo ID do músico.
-      orderBy("dataEnvio", "desc") // Ordena por data.
+    const q = query( // Prepara a busca no banco de dados.
+      collection(db, "feedback_usuarios"), 
+      where("userId", "==", user.uid), 
+      orderBy("dataEnvio", "desc") // Pela data, do mais novo para o antigo.
     );
-    const unsub = onSnapshot(q, (snap) => { // Ouve mudanças em tempo real.
-      setMeusFeedbacks(snap.docs.map(d => ({ id: d.id, ...d.data() }))); // Atualiza a lista.
-    });
-    return () => unsub(); // Limpa o ouvinte ao sair.
-  }, [user]); // Monitora login/logout.
+    const unsub = onSnapshot(q, (snap) => { // Cria a escuta real-time.
+      const dados = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // LÓGICA DE ORDENAÇÃO EXECUTIVA:
+      const ordenados = dados.sort((a, b) => {
+        const statusA = a.status === 'pendente' ? 0 : 1; // Peso para pendentes subirem.
+        const statusB = b.status === 'pendente' ? 0 : 1;
+        if (statusA !== statusB) return statusA - statusB;
 
-  const enviarFeedback = async (e) => { // Função de envio do formulário.
-    e.preventDefault(); // Evita recarregar a página.
-    if (!textoFeedback.trim()) return; // Ignora se estiver vazio.
-    setEnviandoFeedback(true); // Ativa carregamento.
-    try {
-      await addDoc(collection(db, "feedback_usuarios"), { // Salva o ticket no Firebase.
-        userId: user ? user.uid : 'visitante', // ID real ou marca de visitante.
-        userName: userData?.nome || (user ? user.email : 'Usuário Visitante'), // Nome, e-mail ou rótulo.
-        moduloContexto: moduloAtual, // Tela onde o usuário estava.
-        tipo: tipoFeedback, // Categoria selecionada.
-        mensagem: textoFeedback, // O texto escrito.
-        status: 'pendente', // Status inicial para o Master.
-        dataEnvio: new Date() // Carimbo de tempo.
+        const respA = (a.respostaMaster && a.status !== 'resolvido') ? 0 : 1; // Peso para respondidos subirem.
+        const respB = (b.respostaMaster && b.status !== 'resolvido') ? 0 : 1;
+        if (respA !== respB) return respA - respB;
+
+        return b.dataEnvio?.toDate() - a.dataEnvio?.toDate(); // Ordenação final por data.
       });
-      setTextoFeedback(''); // Limpa o campo de texto.
-      if (user) { // Se músico logado...
-        setAbaFeedback('historico'); // Mostra a lista dele.
-      } else { // Se visitante...
-        alert("Sugestão enviada com sucesso! Deus abençoe."); // Mensagem de sucesso.
-        setShowFeedback(false); // Fecha o modal.
-      }
-    } catch (err) { console.error(err); } // Registra erros no console.
-    finally { setEnviandoFeedback(false); } // Libera o botão.
+
+      setMeusFeedbacks(ordenados); // Salva a lista organizada.
+    });
+    return () => unsub(); // Limpa a conexão ao fechar.
+  }, [user]);
+
+  // 2. FUNÇÃO DE ENVIO: Grava o pedido do irmão no banco.
+  const enviarFeedback = async (e) => { 
+    e.preventDefault(); 
+    if (!textoFeedback.trim()) return; 
+    setEnviandoFeedback(true); 
+    try {
+      await addDoc(collection(db, "feedback_usuarios"), { 
+        userId: user ? user.uid : 'visitante', 
+        userName: userData?.nome || (user ? user.email : 'Visitante'), 
+        moduloContexto: moduloAtual, 
+        tipo: tipoFeedback, 
+        mensagem: textoFeedback, 
+        status: 'pendente', 
+        prioridade: 'normal', 
+        dataEnvio: new Date() 
+      });
+      setTextoFeedback(''); 
+      if (user) setAbaFeedback('historico'); 
+      else setShowFeedback(false);
+    } catch (err) { console.error(err); } 
+    finally { setEnviandoFeedback(false); }
   };
 
-  const traduzirStatus = (s) => { // Tradutor de termos do banco.
+  // 3. TRADUTORES VISUAIS: Formata status e data para o irmão.
+  const traduzirStatus = (s) => { 
     const mapa = {
-      'pendente': 'Enviado',
-      'aprovado': 'Aprovado',
-      'aplicado': '✅ Aplicado',
-      'resolvido': '✅ Resolvido',
-      'reprovado': 'Recusado',
-      'não reproduzido': 'Não Reproduzido',
-      'agradecido': '🙏 Gratidão'
+      'pendente': 'Enviado', 'analise': '🔍 Em Análise', 'aprovado': '💡 Ideia Aprovada',
+      'aplicado': '✅ No App!', 'resolvido': '✅ Finalizado', 'reprovado': 'Recusado',
+      'não reproduzido': 'Não localizado', 'agradecido': '🙏 Gratidão'
     };
-    return mapa[s] || s; // Retorna o texto amigável.
+    return mapa[s] || s; 
   };
+
+  // FUNÇÃO AUXILIAR: Transforma o carimbo do banco em data de calendário.
+  const formatarData = (d) => {
+    if (!d) return ""; // Se não tiver data, volta vazio.
+    return d.toDate().toLocaleDateString('pt-BR'); // Formata para Dia/Mês/Ano.
+  };
+
+  // 4. FILTRAGEM DO HISTÓRICO: Filtra a lista baseada no botão de filtro escolhido.
+  const feedbacksFiltrados = meusFeedbacks.filter(f => {
+    if (filtroHistorico === 'abertos') return f.status === 'pendente' || f.status === 'analise';
+    if (filtroHistorico === 'concluidos') return f.status === 'aplicado' || f.status === 'resolvido';
+    return true; 
+  });
 
   return (
     <>
+      {/* BOTÃO FLUTUANTE DA LÂMPADA */}
       <button 
         onClick={() => setShowFeedback(!showFeedback)} 
         className={`fixed bottom-6 right-6 z-[1000] p-4 rounded-full shadow-2xl transition-all active:scale-90 ${
-          showFeedback ? 'bg-amber-500 text-white rotate-12' : 'bg-white/20 text-slate-400 backdrop-blur-sm'
+          showFeedback ? 'bg-amber-500 text-white rotate-12' : 'bg-white/20 text-slate-400 backdrop-blur-sm border border-white/30'
         }`}
       >
-        <Lightbulb size={24} fill={showFeedback ? "currentColor" : "none"} /> {/* Desenha o ícone com a cor corrigida. */}
+        <Lightbulb size={24} fill={showFeedback ? "currentColor" : "none"} />
       </button>
 
-      {showFeedback && createPortal( // Abre o modal por cima de tudo.
-        <div onClick={() => setShowFeedback(false)} className="fixed inset-0 z-[2000] bg-slate-950/20 backdrop-blur-[2px] flex items-end justify-center p-4 pb-24">
-          <motion.div onClick={e => e.stopPropagation()} initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} className="bg-white w-full max-w-sm rounded-[2.5rem] p-6 shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              {user ? ( // Abas apenas para músicos oficiais.
-                <div className="flex bg-slate-100 p-1 rounded-xl">
-                  <button onClick={() => setAbaFeedback('novo')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase ${abaFeedback === 'novo' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Novo</button>
-                  <button onClick={() => setAbaFeedback('historico')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase ${abaFeedback === 'historico' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Histórico</button>
+      {/* MODAL DE SUPORTE MAIOR NA TELA */}
+      {showFeedback && createPortal( 
+        <div onClick={() => setShowFeedback(false)} className="fixed inset-0 z-[2000] bg-slate-950/40 backdrop-blur-[4px] flex items-end sm:items-center justify-center p-4">
+          <motion.div 
+            onClick={e => e.stopPropagation()} 
+            initial={{ opacity: 0, y: 100 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            className="bg-[#F8FAFC] w-full max-w-lg rounded-[2.5rem] p-6 shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+          >
+            {/* CABEÇALHO DO MODAL COM ABAS */}
+            <div className="flex justify-between items-center mb-6 shrink-0">
+              {user ? (
+                <div className="flex bg-slate-200/50 p-1.5 rounded-2xl">
+                  <button onClick={() => setAbaFeedback('novo')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${abaFeedback === 'novo' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500'}`}>Novo Ticket</button>
+                  <button onClick={() => setAbaFeedback('historico')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${abaFeedback === 'historico' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500'}`}>Meus Chamados</button>
                 </div>
-              ) : ( // Título simples para visitantes.
+              ) : ( 
                 <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest italic">Enviar Sugestão</span>
               )}
-              <button onClick={() => setShowFeedback(false)} className="p-2 bg-slate-50 text-slate-300 rounded-full active:scale-90"><X size={16}/></button>
+              <button onClick={() => setShowFeedback(false)} className="p-2.5 bg-white text-slate-300 rounded-full shadow-sm active:scale-90"><X size={18}/></button>
             </div>
 
-            {abaFeedback === 'novo' ? ( // Formulário de escrita.
-              <form onSubmit={enviarFeedback} className="space-y-4">
-                <div className="bg-slate-50 px-4 py-2.5 rounded-xl text-[10px] font-bold text-slate-600 uppercase border border-slate-100">Tela: {titulosModulos[moduloAtual]?.p1} {titulosModulos[moduloAtual]?.p2}</div>
+            {abaFeedback === 'novo' ? ( 
+              /* TELA DE CRIAÇÃO */
+              <form onSubmit={enviarFeedback} className="space-y-4 overflow-y-auto no-scrollbar">
+                <div className="bg-white px-4 py-3 rounded-2xl text-[10px] font-bold text-slate-500 uppercase border border-slate-100 shadow-sm">Contexto: {titulosModulos[moduloAtual]?.p1} {titulosModulos[moduloAtual]?.p2}</div>
                 <div className="grid grid-cols-3 gap-2">
-                  {['bug', 'sugestao', 'elogio'].map(t => ( // Botões de categoria.
-                    <button key={t} type="button" onClick={() => setTipoFeedback(t)} className={`py-2 rounded-xl border text-[8px] font-black uppercase transition-all ${tipoFeedback === t ? 'bg-amber-500 border-amber-500 text-white shadow-md' : 'bg-white border-slate-100 text-slate-400'}`}>
-                      {t === 'bug' ? '🐞 Bug' : t === 'sugestao' ? '💡 Idéia' : '⭐ Elogio'}
+                  {['bug', 'sugestao', 'elogio'].map(t => ( 
+                    <button key={t} type="button" onClick={() => setTipoFeedback(t)} className={`py-3 rounded-2xl border text-[9px] font-black uppercase transition-all ${tipoFeedback === t ? 'bg-amber-500 border-amber-500 text-white shadow-md' : 'bg-white border-slate-100 text-slate-400'}`}>
+                      {t === 'bug' ? '🐞 Erro' : t === 'sugestao' ? '💡 Idéia' : '⭐ Elogio'}
                     </button>
                   ))}
                 </div>
-                <textarea required maxLength={200} value={textoFeedback} onChange={(e) => setTextoFeedback(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-[11px] font-bold outline-none h-32 resize-none placeholder:text-slate-300" placeholder="Encontrou um erro ou tem uma ideia? Conte para nós..." />
-                <button disabled={enviandoFeedback} type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 active:scale-95 shadow-xl transition-all">
-                  <Send size={14}/> {enviandoFeedback ? 'Enviando...' : 'Enviar Ticket'}
-                </button>
+                <textarea required maxLength={250} value={textoFeedback} onChange={(e) => setTextoFeedback(e.target.value)} className="w-full bg-white border border-slate-200 rounded-[2rem] p-6 text-[12px] font-bold outline-none h-48 resize-none placeholder:text-slate-300 shadow-inner focus:ring-2 focus:ring-amber-500/20" placeholder="Conte para o Maestro o que aconteceu..." />
+                <button disabled={enviandoFeedback} type="submit" className="w-full bg-slate-950 text-white py-5 rounded-[1.8rem] font-black uppercase text-[11px] flex justify-center items-center gap-2 active:scale-95 shadow-xl transition-all"><Send size={16}/> {enviandoFeedback ? 'Sincronizando...' : 'Enviar ao Maestro'}</button>
               </form>
-            ) : ( // Lista de histórico para logados.
-              <div className="space-y-3 max-h-80 overflow-y-auto no-scrollbar pb-2">
-                {meusFeedbacks.length === 0 ? <div className="py-12 text-center text-slate-300 text-[10px] font-black uppercase">Nenhum ticket enviado.</div> :
-                  meusFeedbacks.map(f => (
-                    <div key={f.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-left">
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="text-[7px] font-black uppercase px-2 py-0.5 bg-blue-100 text-blue-600 rounded-full">{f.tipo}</span>
-                        <span className={`text-[7px] font-black uppercase px-2 py-0.5 rounded-full ${f.status === 'aplicado' || f.status === 'resolvido' || f.status === 'agradecido' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
-                          {traduzirStatus(f.status)}
-                        </span>
+            ) : ( 
+              /* TELA DE HISTÓRICO COM DATA DO CHAMADO */
+              <div className="flex flex-col h-full overflow-hidden">
+                <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar shrink-0">
+                   {['todos', 'abertos', 'concluidos'].map(f => (
+                     <button key={f} onClick={() => setFiltroHistorico(f)} className={`px-3 py-1.5 rounded-full text-[8px] font-black uppercase border transition-all ${filtroHistorico === f ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-100'}`}>{f}</button>
+                   ))}
+                </div>
+
+                <div className="space-y-4 overflow-y-auto no-scrollbar pb-6 pr-1">
+                  {feedbacksFiltrados.length === 0 ? <div className="py-20 text-center opacity-20 flex flex-col items-center gap-3"><CheckCircle2 size={40}/><p className="text-[10px] font-black uppercase">Nenhum ticket aqui</p></div> :
+                    feedbacksFiltrados.map(f => (
+                      <div key={f.id} className={`bg-white p-5 rounded-[2.2rem] border transition-all relative shadow-sm ${f.status === 'pendente' ? 'border-amber-100 ring-1 ring-amber-50' : 'border-slate-100'}`}>
+                        
+                        <div className={`absolute top-4 right-5 px-2 py-0.5 rounded-md text-[6px] font-black uppercase ${f.prioridade === 'critica' ? 'bg-red-100 text-red-600' : f.prioridade === 'alta' ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-400'}`}>
+                          Prioridade: {f.prioridade || 'Normal'}
+                        </div>
+
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex gap-1.5 items-center">
+                             <span className="text-[7px] font-[900] uppercase px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full">{f.tipo}</span>
+                             <span className={`text-[7px] font-black uppercase px-2 py-0.5 rounded-full ${f.status === 'aplicado' || f.status === 'resolvido' ? 'bg-green-100 text-green-600' : 'bg-blue-50 text-blue-600'}`}>{traduzirStatus(f.status)}</span>
+                             {/* DATA DO CHAMADO: Mostra quando o irmão enviou o pedido */}
+                             <div className="flex items-center gap-1 ml-1 opacity-40">
+                               <Clock size={8} />
+                               <span className="text-[7px] font-black">{formatarData(f.dataEnvio)}</span>
+                             </div>
+                          </div>
+                        </div>
+                        <p className="text-[11px] font-bold text-slate-600 leading-relaxed italic mb-3">"{f.mensagem}"</p>
+                        
+                        {f.respostaMaster && (
+                          <div className="mt-3 pt-3 border-t border-dashed border-slate-100 animate-in slide-in-from-top-2">
+                            <div className="flex items-center gap-1.5 mb-2"><div className="w-1 h-3 bg-blue-600 rounded-full" /><span className="text-[7px] font-black uppercase text-blue-600 tracking-widest">Resposta do Maestro</span></div>
+                            <p className="text-[11px] font-black text-slate-800 leading-tight bg-blue-50/40 p-4 rounded-2xl border border-blue-100/50">{f.respostaMaster}</p>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-[10px] font-bold text-slate-600 leading-tight italic">"{f.mensagem}"</p>
-                    </div>
-                  ))
-                }
+                    ))
+                  }
+                </div>
               </div>
             )}
           </motion.div>
@@ -132,4 +191,4 @@ const Tickets = ({ user, userData, moduloAtual, titulosModulos }) => { // Inicia
   );
 };
 
-export default Tickets; // Exporta o instrumento para a orquestra principal.
+export default Tickets; // Exporta o componente completo com data e histórico.

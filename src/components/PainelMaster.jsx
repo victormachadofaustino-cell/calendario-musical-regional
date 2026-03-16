@@ -28,157 +28,153 @@ import { REGIONAIS as ENCARREGADOS_LISTA } from '../../migracao_backup/data/migr
 import { NOVOS_REGIONAIS_DATA } from '../../migracao_backup/data/migrarRegionais'; // Dados de backup da agenda de regionais.
 import { LOCAIS_DATA } from '../../migracao_backup/data/migrarLocais'; // Dados de backup dos ensaios locais.
 
-const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // Componente Maestro que coordena todo o painel.
+const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // Componente Maestro que coordena todo o painel administrativo.
   const [usuariosPendentes, setUsuariosPendentes] = useState([]); // Lista de novos cadastros aguardando aprovação.
-  const [sugestoesAlteracao, setSugestoesAlteracao] = useState([]); // Lista de edições enviadas pelos colaboradores.
-  const [todosUsuarios, setTodosUsuarios] = useState([]); // Lista de todos os usuários cadastrados no sistema.
-  const [rankingAtividade, setRankingAtividade] = useState([]); // Dados para o histórico de auditoria.
-  const [countTickets, setCountTickets] = useState(0); // Quantidade de mensagens de suporte da lâmpada.
+  const [sugestoesAlteracao, setSugestoesAlteracao] = useState([]); // Lista de edições enviadas pelos colaboradores locais.
+  const [todosUsuarios, setTodosUsuarios] = useState([]); // Lista de todos os usuários aprovados no sistema.
+  const [rankingAtividade, setRankingAtividade] = useState([]); // Dados para o histórico de quem aprovou o quê.
 
-  const [openAcessos, setOpenAcessos] = useState(false); // Controle da sanfona de Novos Acessos.
-  const [openDados, setOpenDados] = useState(false); // Controle da sanfona de Sugestões de Dados.
-  const [openApp, setOpenApp] = useState(false); // Controle da sanfona de Feedback (Tickets).
+  const [openAcessos, setOpenAcessos] = useState(false); // Controle da sanfona para abrir a lista de Novos Acessos.
+  const [openDados, setOpenDados] = useState(false); // Controle da sanfona para abrir a lista de Sugestões de Dados.
 
-  const isMaster = userLogado?.nivel === 'master'; // BLOQUEIO DE SEGURANÇA: Identifica se o usuário é o Maestro Regional.
+  const isMaster = userLogado?.nivel === 'master'; // BLOQUEIO DE SEGURANÇA: Identifica se o usuário logado é o Maestro Regional.
   
   // MUDANÇA ESTRATÉGICA: A aba inicial agora depende se o usuário tem pendências para olhar ou só o próprio perfil.
-  const [aba, setAba] = useState(isMaster ? 'pendentes' : 'perfil'); // Define a aba que abre primeiro.
+  const [aba, setAba] = useState(isMaster ? 'pendentes' : 'perfil'); // Define qual aba o sistema mostra primeiro ao abrir.
   
-  const [feedback, setFeedback] = useState(null); // Estado para mostrar avisos de sucesso/erro.
-  const [loadingModulos, setLoadingModulos] = useState({}); // Estado para o ícone de carregamento dos backups.
-  const [confirma, setConfirma] = useState(null); // Estado para o modal de "Tem certeza?".
-  const [configLista, setConfigLista] = useState({ url: '', dataReferencia: '', atualizacao: '' }); // Configurações da Lista de Batismos.
+  const [feedback, setFeedback] = useState(null); // Estado para mostrar avisos coloridos de sucesso ou erro na tela.
+  const [loadingModulos, setLoadingModulos] = useState({}); // Estado que mostra o ícone de carregando nos botões de backup.
+  const [confirma, setConfirma] = useState(null); // Estado que controla o modal de confirmação "Tem certeza?".
+  const [configLista, setConfigLista] = useState({ url: '', dataReferencia: '', atualizacao: '' }); // Configurações da URL da Lista Oficial.
   
-  const [meuNome, setMeuNome] = useState(userLogado?.nome || ''); // Nome editável do perfil.
-  const [minhaCidade, setMinhaCidade] = useState(userLogado?.cidade || ''); // Cidade do perfil.
-  const [meuCargo, setMeuCargo] = useState(userLogado?.cargo || ''); // Cargo do perfil.
+  const [meuNome, setMeuNome] = useState(userLogado?.nome || ''); // Nome do perfil que você pode editar.
+  const [minhaCidade, setMinhaCidade] = useState(userLogado?.cidade || ''); // Cidade do seu perfil.
+  const [meuCargo, setMeuCargo] = useState(userLogado?.cargo || ''); // Cargo do seu perfil.
   
-  const [editandoUser, setEditandoUser] = useState(null); // Usuário selecionado na lista para ajuste.
-  const [novoCargo, setNovoCargo] = useState(''); // Estado auxiliar para mudar cargo de terceiros.
-  const [novaCidade, setNovaCidade] = useState(''); // Estado auxiliar para mudar cidade de terceiros.
+  const [editandoUser, setEditandoUser] = useState(null); // Guarda qual usuário da lista você clicou para ajustar.
+  const [novoCargo, setNovoCargo] = useState(''); // Guarda o novo cargo escolhido na janelinha de ajuste.
+  const [novaCidade, setNovaCidade] = useState(''); // Guarda a nova cidade escolhida na janelinha de ajuste.
 
-  useEffect(() => { // Vigia o banco de dados em tempo real.
-    if (!userLogado) return; // Se não houver ninguém logado, não abre conexões.
+  useEffect(() => { // Vigia o banco de dados em tempo real enquanto este painel estiver aberto.
+    if (!userLogado) return; // Se não houver ninguém logado por erro, ele não tenta conectar ao banco.
 
-    let unsubP, unsubS, unsubC, unsubR, unsubT;
+    let unsubP, unsubS, unsubC, unsubR; // Variáveis que guardam a "escuta" do banco para podermos desligar depois.
 
-    // MUDANÇA ESTRATÉGICA: Editores agora também escutam a lista de usuários para verem seus irmãos locais.
+    // ESCUTA DE USUÁRIOS: Vigia quem está na fila e quem já está aprovado.
     unsubP = onSnapshot(collection(db, "usuarios"), (snap) => { 
-      const lista = snap.docs.map(d => ({ id: d.id, ...d.data() })); // Transforma os dados do banco em uma lista legível.
-      setUsuariosPendentes(lista.filter(u => u.status === 'pendente')); // Separa quem está esperando aprovação.
-      setTodosUsuarios(lista.filter(u => u.status !== 'pendente')); // Pega todos os que já foram aprovados.
+      const lista = snap.docs.map(d => ({ id: d.id, ...d.data() })); // Transforma os dados brutos do Google em uma lista legível.
+      setUsuariosPendentes(lista.filter(u => u.status === 'pendente')); // Filtra apenas quem está na sala de espera.
+      setTodosUsuarios(lista.filter(u => u.status !== 'pendente')); // Pega todos os que já tocam na orquestra (aprovados).
     });
 
-    // Se for Master, abre também as conexões administrativas.
+    // Se você for Master, o sistema abre as conexões de administração pesada.
     if (isMaster) {
       unsubS = onSnapshot(collection(db, "sugestoes_pendentes"), (snap) => { 
-        setSugestoesAlteracao(snap.docs.map(d => ({ id: d.id, ...d.data() }))); // Escuta sugestões de mudança de ensaio.
+        setSugestoesAlteracao(snap.docs.map(d => ({ id: d.id, ...d.data() }))); // Vigia sugestões de mudança nos ensaios.
       });
 
-      unsubT = onSnapshot(query(collection(db, "feedback_usuarios"), where("status", "==", "pendente")), (snap) => {
-        setCountTickets(snap.size); // Escuta tickets da lâmpada.
-      });
-
+      // ESCUTA DE HISTÓRICO: Pega os últimos 50 registros de quem aprovou mudanças no sistema.
       const qRanking = query(collection(db, "sugestoes_aprovadas_historico"), orderBy("dataProcessamento", "desc"), limit(50));
       unsubR = onSnapshot(qRanking, (snap) => {
-        setRankingAtividade(snap.docs.map(d => ({ id: d.id, ...d.data() }))); // Escuta o histórico de auditoria.
+        setRankingAtividade(snap.docs.map(d => ({ id: d.id, ...d.data() }))); // Atualiza o histórico de auditoria.
       });
     }
 
+    // Vigia a configuração da Lista de Batismos (URL e data).
     unsubC = onSnapshot(doc(db, "configuracoes", "lista_oficial"), (snap) => {
-      if (snap.exists()) setConfigLista(snap.data()); // Escuta a URL da Lista Oficial.
+      if (snap.exists()) setConfigLista(snap.data()); // Se a configuração existir no banco, traz para a tela.
     });
 
-    return () => { // Limpa todas as escutas ao fechar o painel.
-      if (unsubP) unsubP(); if (unsubS) unsubS(); if (unsubC) unsubC(); if (unsubR) unsubR(); if (unsubT) unsubT();
+    return () => { // Função de limpeza: desliga todas as escutas ao fechar o painel para economizar internet.
+      if (unsubP) unsubP(); if (unsubS) unsubS(); if (unsubC) unsubC(); if (unsubR) unsubR();
     };
   }, [isMaster, userLogado]);
 
-  const dispararFeedback = (msg, tipo) => { setFeedback({ msg, tipo }); }; // Faz o aviso colorido aparecer na tela.
+  const dispararFeedback = (msg, tipo) => { setFeedback({ msg, tipo }); }; // Atalho para fazer o aviso de sucesso ou erro aparecer.
 
-  const atualizarMeuPerfil = async (e) => { // Salva as mudanças no próprio perfil.
-    e.preventDefault();
+  const atualizarMeuPerfil = async (e) => { // Salva as mudanças que você fez no seu próprio nome, cargo ou cidade.
+    e.preventDefault(); // Evita que a página recarregue ao clicar em salvar.
     try {
       await updateDoc(doc(db, "usuarios", auth.currentUser.uid), {
         nome: meuNome, cidade: minhaCidade, cargo: meuCargo
-      }); // Grava no banco apenas o que foi alterado.
-      dispararFeedback("Perfil atualizado!", 'sucesso');
-    } catch (e) { dispararFeedback("Erro ao atualizar", 'erro'); }
+      }); // Grava no banco de dados apenas os seus dados atualizados.
+      dispararFeedback("Perfil atualizado!", 'sucesso'); // Mostra o aviso verde de sucesso.
+    } catch (e) { dispararFeedback("Erro ao atualizar", 'erro'); } // Mostra o aviso vermelho de erro.
   };
 
-  const gerenciarUsuario = async (uid, campos) => { // Função मास्टर para aprovar ou alterar outros usuários.
+  const gerenciarUsuario = async (uid, campos) => { // Função para o Master aprovar acesso ou mudar nível de outros irmãos.
     try {
-      await updateDoc(doc(db, "usuarios", uid), campos); // Aplica a nova permissão ou status.
+      await updateDoc(doc(db, "usuarios", uid), campos); // Aplica as novas informações no cadastro do irmão selecionado.
       dispararFeedback("Usuário atualizado!", 'sucesso');
-      setEditandoUser(null);
+      setEditandoUser(null); // Fecha a janelinha de ajuste após salvar.
     } catch (e) { dispararFeedback("Erro na atualização", 'erro'); }
   };
 
-  const resetarSenhaUsuario = async (email) => { // Envia e-mail de "Esqueci minha senha" pelo sistema do Google.
+  const resetarSenhaUsuario = async (email) => { // Envia o e-mail oficial do Google para o irmão trocar a senha.
     try {
-      await sendPasswordResetEmail(auth, email);
+      await sendPasswordResetEmail(auth, email); // Dispara o gatilho de segurança do Firebase.
       dispararFeedback("E-mail de reset enviado!", 'sucesso');
     } catch (e) { dispararFeedback("Erro ao enviar reset", 'erro'); }
   };
 
-  const processarSugestao = async (sug, aprovado) => { // Aceita ou recusa sugestões vindas dos Editores Locais.
+  const processarSugestao = async (sug, aprovado) => { // Aceita ou recusa uma correção de ensaio enviada por um editor.
     try {
-      if (aprovado) {
-        let colecao = "";
+      if (aprovado) { // Se você clicou no Check verde...
+        let colecao = ""; // Define em qual pasta do banco a mudança deve ser gravada.
         if (sug.tipo === 'local') colecao = "ensaios_locais";
         else if (sug.tipo === 'regional') colecao = "ensaios_regionais";
         else if (sug.tipo === 'contato_regional') colecao = "encarregados_regionais";
         else if (sug.tipo === 'contato_examinadora') colecao = "examinadoras";
 
-        await updateDoc(doc(db, colecao, sug.ensaioId), sug.dadosSugeridos); // Atualiza o ensaio oficial.
+        await updateDoc(doc(db, colecao, sug.ensaioId), sug.dadosSugeridos); // Grava a nova informação no lugar da antiga.
         await addDoc(collection(db, "sugestoes_aprovadas_historico"), {
           ...sug, dataProcessamento: new Date(), processadoPor: userLogado.nome
-        }); // Salva quem autorizou no histórico.
+        }); // Guarda quem foi o Master que autorizou essa mudança para auditoria.
         dispararFeedback("Alteração aplicada!", 'sucesso');
       }
-      await deleteDoc(doc(db, "sugestoes_pendentes", sug.id)); // Tira da fila de espera.
+      await deleteDoc(doc(db, "sugestoes_pendentes", sug.id)); // Tira o pedido da fila de espera, seja aprovado ou recusado.
     } catch (e) { dispararFeedback("Erro ao processar", 'erro'); }
   };
 
-  const syncModulo = async (tipo) => { // Pega os arquivos de backup e sobe para o banco de dados.
-    setConfirma(null);
-    setLoadingModulos(prev => ({ ...prev, [tipo]: true }));
-    const batch = writeBatch(db); // Prepara um pacote de ordens.
+  const syncModulo = async (tipo) => { // Pega os arquivos de backup e restaura o banco de dados oficial.
+    setConfirma(null); // Fecha o modal de confirmação.
+    setLoadingModulos(prev => ({ ...prev, [tipo]: true })); // Liga o ícone de carregando no botão do backup.
+    const batch = writeBatch(db); // Prepara um pacote de ordens para o banco processar tudo de uma vez.
     const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
     try {
       if (tipo === 'locais' || tipo === 'tudo') {
         const snapLoc = await getDocs(collection(db, "ensaios_locais"));
-        snapLoc.forEach(d => batch.delete(d.ref)); // Apaga os locais atuais.
-        LOCAIS_DATA.forEach(item => batch.set(doc(collection(db, "ensaios_locais")), item)); // Sobe o backup.
+        snapLoc.forEach(d => batch.delete(d.ref)); // Apaga todos os ensaios locais atuais para não duplicar.
+        LOCAIS_DATA.forEach(item => batch.set(doc(collection(db, "ensaios_locais")), item)); // Escreve o backup oficial.
       }
       if (tipo === 'regionais' || tipo === 'tudo') {
         const snapReg = await getDocs(collection(db, "ensaios_regionais"));
-        snapReg.forEach(d => batch.delete(d.ref)); // Apaga agenda regional atual.
+        snapReg.forEach(d => batch.delete(d.ref)); // Apaga a agenda regional atual.
         NOVOS_REGIONAIS_DATA.forEach(item => {
           const [dia, mesNum] = item.date.split('/');
           batch.set(doc(collection(db, "ensaios_regionais")), { 
             dia: Number(dia), mes: MESES[parseInt(mesNum) - 1], hora: item.hour, 
             weekday: item.weekday, sede: item.city.toUpperCase(), local: item.location, tipo: "Regional" 
-          }); // Sobe nova agenda regional.
+          }); // Sobe a nova agenda regional do backup.
         });
       }
       if (tipo === 'examinadoras' || tipo === 'tudo') {
         const snapExa = await getDocs(collection(db, "examinadoras"));
-        snapExa.forEach(d => batch.delete(d.ref)); // Reseta contatos de examinadoras.
-        EXAMINADORAS.forEach(item => batch.set(doc(collection(db, "examinadoras")), item)); // Sobe oficial.
+        snapExa.forEach(d => batch.delete(d.ref)); // Limpa contatos das examinadoras.
+        EXAMINADORAS.forEach(item => batch.set(doc(collection(db, "examinadoras")), item)); // Sobe os contatos do backup.
       }
       if (tipo === 'encarregados' || tipo === 'tudo') {
         const snapEnc = await getDocs(collection(db, "encarregados_regionais"));
-        snapEnc.forEach(d => batch.delete(d.ref)); // Reseta contatos regional.
-        ENCARREGADOS_LISTA.forEach(item => batch.set(doc(collection(db, "encarregados_regionais")), item)); // Sobe oficial.
+        snapEnc.forEach(d => batch.delete(d.ref)); // Limpa contatos dos encarregados regionais.
+        ENCARREGADOS_LISTA.forEach(item => batch.set(doc(collection(db, "encarregados_regionais")), item)); // Sobe do backup.
       }
-      await batch.commit(); // Executa o pacote de uma vez só.
+      await batch.commit(); // Executa todas as trocas de uma vez só no banco de dados.
       dispararFeedback(`Backup restaurado!`, 'sucesso');
     } catch (e) { dispararFeedback(`Erro na sincronização`, 'erro'); }
-    finally { setLoadingModulos(prev => ({ ...prev, [tipo]: false })); }
+    finally { setLoadingModulos(prev => ({ ...prev, [tipo]: false })); } // Desliga o ícone de carregando.
   };
 
-  return ( // Início da estrutura visual do Maestro.
+  return ( // Início da montagem visual do Painel Master.
     <div className="fixed inset-0 z-[1500] bg-slate-950/60 backdrop-blur-md flex items-end sm:items-center justify-center p-4">
       {feedback && <Feedback mensagem={feedback.msg} tipo={feedback.tipo} aoFechar={() => setFeedback(null)} />}
       
@@ -195,29 +191,29 @@ const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // Compone
             </button>
           </div>
 
-          {/* MENUS DE NAVEGAÇÃO (BOTÕES) */}
+          {/* MENUS DE NAVEGAÇÃO POR ABAS */}
           <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1.5 rounded-2xl">
             <button onClick={() => setAba('perfil')} className={`py-3 rounded-xl text-[7px] font-black uppercase transition-all ${aba === 'perfil' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Perfil</button>
             
-            {/* MUDANÇA ESTRATÉGICA: Se for Master, vê a fila de novos pedidos. */}
+            {/* Se for Master, mostra a fila de aprovação de novos irmãos. */}
             {isMaster && (
               <button onClick={() => setAba('pendentes')} className={`py-3 rounded-xl text-[7px] font-black uppercase transition-all ${aba === 'pendentes' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Fila {pendenciasCount > 0 && `(${pendenciasCount})`}</button>
             )}
 
-            {/* MUDANÇA ESTRATÉGICA: Liberado para todos (veem os usuários de suas cidades). */}
+            {/* Aberto para todos verem quem são os músicos da sua própria cidade. */}
             <button onClick={() => setAba('usuarios')} className={`py-3 rounded-xl text-[7px] font-black uppercase transition-all ${aba === 'usuarios' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Users</button>
             
-            {/* MUDANÇA ESTRATÉGICA: Se for Master, vê o menu de backups. */}
+            {/* Se for Master, mostra o menu de restauração de backups. */}
             {isMaster && (
               <button onClick={() => setAba('config')} className={`py-3 rounded-xl text-[7px] font-black uppercase transition-all ${aba === 'config' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-400'}`}>Manut.</button>
             )}
           </div>
         </div>
 
-        {/* ÁREA DE CONTEÚDO (O MAESTRO CHAMA OS NAIPIES AQUI) */}
+        {/* ÁREA DE CONTEÚDO DINÂMICO */}
         <div className="flex-grow overflow-y-auto p-6 space-y-4 no-scrollbar pb-24">
           
-          {/* ABA PERFIL (Naipe de Cordas) */}
+          {/* MOSTRA O PERFIL (Sempre acessível) */}
           {aba === 'perfil' && (
             <AbaPerfil 
               masterLogado={isMaster} meuNome={meuNome} setMeuNome={setMeuNome} 
@@ -228,7 +224,7 @@ const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // Compone
             />
           )}
 
-          {/* ABA PENDÊNCIAS (Naipe de Metais - Exclusiva Master) */}
+          {/* MOSTRA A FILA DE ESPERA (Apenas para Master) */}
           {isMaster && aba === 'pendentes' && (
             <AbaPendencias 
               openAcessos={openAcessos} setOpenAcessos={setOpenAcessos}
@@ -236,30 +232,29 @@ const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // Compone
               deleteDoc={deleteDoc} doc={doc} db={db}
               openDados={openDados} setOpenDados={setOpenDados}
               sugestoesAlteracao={sugestoesAlteracao} processarSugestao={processarSugestao}
-              openApp={openApp} setOpenApp={setOpenApp} countTickets={countTickets}
               CompararCampo={CompararCampo}
             />
           )}
 
-          {/* ABA USUÁRIOS (Naipe de Percussão - Liberada para todos) */}
+          {/* MOSTRA A LISTA DE USUÁRIOS ATIVOS */}
           {aba === 'usuarios' && (
             <AbaGerenciarUsuarios 
               todosUsuarios={todosUsuarios} gerenciarUsuario={gerenciarUsuario}
               resetarSenhaUsuario={resetarSenhaUsuario} setEditandoUser={setEditandoUser}
               editandoUser={editandoUser} novoCargo={novoCargo} setNovoCargo={setNovoCargo}
               novaCidade={novaCidade} setNovaCidade={setNovaCidade}
-              userLogado={userLogado} // Passamos quem está logado para aplicar o filtro de cidade.
+              userLogado={userLogado}
             />
           )}
 
-          {/* ABA MANUTENÇÃO (Naipe de Sopro - Exclusiva Master) */}
+          {/* MOSTRA FERRAMENTAS DE BACKUP (Apenas para Master) */}
           {isMaster && aba === 'config' && (
             <AbaManutencao setConfirma={setConfirma} loadingModulos={loadingModulos} />
           )}
         </div>
       </div>
 
-      {/* MODAL DE CONFIRMAÇÃO DE BACKUP */}
+      {/* MODAL DE CONFIRMAÇÃO DE BACKUP (Proteção contra cliques acidentais) */}
       {confirma && createPortal(
         <div className="fixed inset-0 z-[1600] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
           <div className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl text-center animate-in zoom-in-95">
@@ -274,7 +269,7 @@ const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // Compone
         </div>, document.body
       )}
 
-      {/* MODAL DE AJUSTE DE USUÁRIO */}
+      {/* MODAL DE AJUSTE DE DADOS DE TERCEIROS */}
       {editandoUser && createPortal(
         <div className="fixed inset-0 z-[1600] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md text-left">
           <div className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95">
@@ -290,7 +285,7 @@ const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // Compone
                   {CARGOS_LISTA.map(cargo => <option key={cargo} value={cargo}>{cargo}</option>)}
                 </select>
               </div>
-              <button onClick={() => gerenciarUsuario(editandoUser.id, { cargo: novoCargo, cidade: novaCidade })} className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] active:scale-95 shadow-xl mt-4 transition-all">Salvar Ajustes</button>
+              <button onClick={() => gerenciarUsuario(editandoUser.id, { cargo: novoCargo, city: novaCidade })} className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] active:scale-95 shadow-xl mt-4 transition-all">Salvar Ajustes</button>
               <button onClick={() => setEditandoUser(null)} className="w-full text-slate-400 py-2 text-[8px] font-black uppercase transition-all text-center">Cancelar</button>
             </div>
           </div>
@@ -300,4 +295,4 @@ const PainelMaster = ({ aoFechar, userLogado, pendenciasCount }) => { // Compone
   );
 };
 
-export default PainelMaster; // Exporta o componente Maestro atualizado para o resto do app.
+export default PainelMaster; // Exporta o mestre da administração regional atualizado.
