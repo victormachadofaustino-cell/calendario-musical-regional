@@ -1,31 +1,32 @@
 // src/components/ListaOficial.jsx
-import React, { useState, useEffect } from 'react';
-import { db } from '../firebaseConfig';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { FileText, Download, ExternalLink, AlertCircle, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react'; // Ferramenta base do React para criar elementos visuais e gerenciar a memória do app.
+import { db } from '../firebaseConfig'; // Conecta com a central de dados do Firebase que configuramos na pasta raiz.
+import { doc, onSnapshot } from 'firebase/firestore'; // Ferramentas do banco para localizar um documento específico e ouvi-lo em tempo real.
+import { FileText, Download, ExternalLink, AlertCircle, Loader2 } from 'lucide-react'; // Biblioteca de ícones para desenhar o botão e o símbolo de carregamento.
 
-const ListaOficial = () => {
-  const [config, setConfig] = useState(null);
-  const [carregando, setCarregando] = useState(true);
+const ListaOficial = () => { // Início do componente que desenha o botão da Lista de Batismos.
+  const [config, setConfig] = useState(null); // Variável de memória que guardará o link e a data vindos do banco de dados.
+  const [carregando, setCarregando] = useState(true); // Variável que controla se o ícone de "carregando" deve aparecer na tela.
 
-  useEffect(() => {
-    // Escuta em tempo real as configurações salvas pelo Master no Painel Master
+  useEffect(() => { // Lógica que entra em ação assim que o músico abre o aplicativo.
+    // O Maestro (onSnapshot) fica vigiando a gaveta "lista_oficial" dentro da pasta "configuracoes" no banco de dados.
     const unsub = onSnapshot(doc(db, "configuracoes", "lista_oficial"), (snap) => {
       if (snap.exists()) {
-        setConfig(snap.data());
+        setConfig(snap.data()); // Se você salvou um link novo no Painel Master, o app se atualiza aqui instantaneamente.
       } else {
-        // Fallback caso o documento ainda não exista
+        // Fallback: Caso o banco de dados esteja vazio, ele usa um link padrão do Google para não dar erro.
         setConfig({ url: "https://drive.google.com", atualizacao: "Aguardando Master..." });
       }
-      setCarregando(false);
+      setCarregando(false); // Avisa ao sistema que os dados chegaram e pode parar de mostrar a animação de carga.
     }, (error) => {
-      console.error("Erro ao sincronizar documento:", error);
-      setCarregando(false);
+      console.error("Erro ao sincronizar documento:", error); // Registra no console se houver falha técnica de conexão.
+      setCarregando(false); // Para o carregamento mesmo com erro para não travar a tela do irmão.
     });
 
-    return () => unsub();
-  }, []);
+    return () => unsub(); // Quando o músico fecha o app, desliga a vigilância para economizar bateria e internet.
+  }, []); 
 
+  // Se o sistema ainda estiver buscando a "partitura" no banco, mostra um aviso de carregamento elegante.
   if (carregando) {
     return (
       <div className="flex flex-col items-center justify-center py-10 gap-4">
@@ -35,18 +36,23 @@ const ListaOficial = () => {
     );
   }
 
+  // Define qual link final e qual data aparecerão no botão após o carregamento.
   const URL_FINAL = config?.url || "#";
   const DATA_FINAL = config?.atualizacao || "N/A";
 
-  return (
+  return ( // Início da parte visual que o músico verá no celular.
     <div className="px-6 w-full">
+      {/* Botão com design oficial: fundo preto, bordas muito arredondadas e efeito de clique (active:scale-95). */}
       <button 
-        onClick={() => window.open(URL_FINAL, '_blank')} 
+        onClick={() => window.open(URL_FINAL, '_blank')} // Abre o link do Google Drive em uma nova aba do navegador ao tocar.
         className="w-full bg-slate-950 p-6 rounded-[2.2rem] shadow-xl flex items-center justify-center gap-6 text-white active:scale-95 border border-slate-800"
       >
+        {/* Ícone de papel em cor Amarela (Amber) para destacar que é um documento oficial. */}
         <FileText size={28} className="text-amber-500" />
         <div className="flex flex-col items-start text-left">
+          {/* Título do botão em letras garrafais e espaçadas. */}
           <span className="text-[10px] font-black uppercase tracking-[0.4em]">Lista Oficial</span>
+          {/* Mostra a data que você digitou lá no Painel Master. */}
           <span className="text-slate-500 text-[7px] font-bold uppercase tracking-widest">Atualizada em {DATA_FINAL}</span>
         </div>
       </button>
@@ -54,4 +60,4 @@ const ListaOficial = () => {
   );
 };
 
-export default ListaOficial;
+export default ListaOficial; // Exporta este componente para ser usado no palco principal (App.jsx).

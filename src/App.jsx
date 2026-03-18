@@ -42,13 +42,13 @@ function App() { // Função principal que constrói e organiza todo o aplicativ
   const { user, userData, pendenciasCount } = useAuth(); // Obtém os dados do usuário logado e contagem de novos cadastros do Hook de autenticação.
   
   // 🛡️ CARGA INICIAL: Carrega todas as informações do banco de dados de uma só vez para velocidade e fluidez.
-  const { todosEnsaios, ensaiosRegionaisData, reunioesData, encarregadosData, examinadorasData, loading } = useFirestoreData(); 
+  const { todosEnsaios, ensaiosRegionaisData, reunioesData, encarregadosData, examinadorasData, loading } = useFirestoreData();
 
   const touchStartX = useRef(null); // Referência para guardar onde o dedo tocou na tela pela primeira vez para o gesto de deslizar.
   const touchEndX = useRef(null); // Referência para guardar onde o dedo saiu da tela.
 
   // 🔄 FILA DE NAVEGAÇÃO: Define a ordem das telas para permitir o arrasto lateral (Swipe) entre elas.
-  const ORDEM_MODULOS = ['hub', 'locais', 'regionais', 'comissao', 'avisos', 'reunioes', 'tickets']; 
+  const ORDEM_MODULOS = ['hub', 'locais', 'regionais', 'comissao', 'avisos', 'reunioes', 'tickets'];
 
   // Títulos que aparecem no Header para cada seção do App de forma dinâmica.
   const TITULOS_MODULOS = { 
