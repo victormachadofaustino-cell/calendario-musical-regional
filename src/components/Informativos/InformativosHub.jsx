@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'; // Ferramenta base do React para gerenciar memória e referências de toque do dedo.
+import React, { useState, useRef, useEffect } from 'react'; // Ferramenta base do React para gerenciar memória e referências de toque do dedo.
 import { db } from '../../firebaseConfig'; // Conexão oficial com o banco de dados da Regional no Firebase, subindo dois níveis de pasta.
 import { collection, query, orderBy, onSnapshot, doc, deleteDoc, addDoc, updateDoc } from 'firebase/firestore'; // Ferramentas do banco para ler, criar, editar e apagar dados.
 import { Loader2, BookOpen, Clock, Plus, Trash2, Edit3, X, Send, BookText, LayoutDashboard, MapPinCheck, History, Music2, ArrowLeft, ChevronRight, Lock } from 'lucide-react'; // Ícones para os cards de menu, botões e travas de segurança.
@@ -10,6 +10,7 @@ import Feedback from '../Feedback'; // Componente de avisos de sucesso ou erro l
 import SecaoInstrucoes from './SecaoInstrucoes'; // Importa o arquivo que cuida dos textos numerados.
 import SecaoDiagrama from './SecaoDiagrama'; // Importa o arquivo que desenha o mapa da orquestra.
 import SecaoTabelaPermissoes from './SecaoTabelaPermissoes'; // Importa o arquivo da tabela técnica.
+import SecaoProgramaMinimo from './SecaoProgramaMinimo'; // Importa o novo modal de escolha de métodos para músicos e organistas.
 
 // Importação das Novas Regras de Permissões
 import { isMaster } from '../../constants/permissions'; // Importa a regra que identifica se o usuário logado tem poder de Mestre.
@@ -24,63 +25,50 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
   const [mostraAdd, setMostraAdd] = useState(false); // Controla se a janelinha flutuante de "Novo/Editar" deve aparecer.
   const [enviando, setEnviando] = useState(false); // Trava o botão de salvar para evitar que cliques repetidos enviem dados duplicados.
   const [subSecao, setSubSecao] = useState('hub'); // Controla se estamos no menu de cards ('hub') ou dentro de um informativo específico.
+  const [showProgramaMinimo, setShowProgramaMinimo] = useState(false); // Controle específico para abrir e fechar a janelinha do Programa Mínimo.
 
   const touchStartX = useRef(null); // Referência para guardar onde o dedo tocou na tela para o gesto circular.
   const touchEndX = useRef(null); // Referência para guardar onde o dedo saiu da tela.
 
-  // 🔄 FILA DE NAVEGAÇÃO INTERNA: Define a ordem dos capítulos para o movimento do dedo.
-  const ORDEM_SUBSECOES = ['instrucoes', 'diagrama', 'tabela'];
+  // 🔄 FILA DE NAVEGAÇÃO INTERNA: Define os capítulos que permitem deslizar o dedo para os lados.
+  const ORDEM_SUBSECOES = ['instrucoes', 'diagrama', 'tabela']; 
 
   const masterLogado = isMaster(user); // Usa o motor de regras para confirmar se quem está acessando é o administrador.
   const [formAviso, setFormAviso] = useState({ titulo: '', conteudo: '', ordem: 1, prioridade: 'normal', categoria: 'Instrução', tituloSecundario: '', cordas: '', madeiras: '', metais: '' }); // Campos do formulário de avisos.
   const [formLinha, setFormLinha] = useState({ s: '', o: true, n: true, rb: true, rnb: true, me: true }); // Campos do formulário da tabela.
 
   // 1. SINCRONIA INTELIGENTE COM O BOTÃO VOLTAR (CASCATA)
-  useEffect(() => {
-    // 🛡️ MUDANÇA DE LÓGICA: Agora, se voltarmos para o 'hub', limpamos o histórico.
-    // Isso avisa ao App.jsx que o dedo pode voltar a trocar de módulo (Reuniões/Contatos).
-    if (subSecao !== 'hub') {
-      window.history.pushState({ subSecao }, ""); // Registra que entramos em um card.
-      
-      const tratarBotaoVoltar = () => {
-        setSubSecao('hub'); // Fecha o card ao detectar o comando de voltar.
-      };
-
-      window.addEventListener('popstate', tratarBotaoVoltar); // Ativa o "ouvido" do navegador.
-      return () => window.removeEventListener('popstate', tratarBotaoVoltar); // Desativa ao sair.
-    } else {
-      // 🧹 LIMPEZA DE SEGURANÇA: Se estamos no menu de cards, garantimos que o estado do navegador seja "limpo".
+  useEffect(() => { // Gerencia o comportamento do botão "voltar" do celular Android/iPhone.
+    if (subSecao !== 'hub') { 
+      window.history.pushState({ subSecao }, ""); 
+      const tratarBotaoVoltar = () => { setSubSecao('hub'); };
+      window.addEventListener('popstate', tratarBotaoVoltar); 
+      return () => window.removeEventListener('popstate', tratarBotaoVoltar); 
+    } else { 
       window.history.replaceState({ subSecao: 'hub' }, ""); 
     }
-  }, [subSecao]); // Monitora a mudança entre os capítulos.
+  }, [subSecao]); 
 
   // 🧠 INTELIGÊNCIA DE NAVEGAÇÃO CIRCULAR (DEDO): Gerencia a troca de cards por deslize.
-  const aoFinalizarToqueInterno = () => {
-    // Se estiver no menu principal de avisos (hub), o dedo é controlado pelo Maestro Geral (App.jsx).
+  const aoFinalizarToqueInterno = () => { 
     if (!touchStartX.current || !touchEndX.current || subSecao === 'hub') return; 
 
-    const distanciaX = touchStartX.current - touchEndX.current; // Mede o tamanho do rastro do dedo.
-    const indexAtual = ORDEM_SUBSECOES.indexOf(subSecao); // Identifica o informativo atual.
+    const distanciaX = touchStartX.current - touchEndX.current; 
+    const indexAtual = ORDEM_SUBSECOES.indexOf(subSecao); 
 
-    if (Math.abs(distanciaX) > 70) { // Só executa se for um movimento intencional.
-      if (distanciaX > 70) { // 👈 Arrastou para a esquerda (Avançar para o próximo).
-        if (indexAtual === ORDEM_SUBSECOES.length - 1) {
-          setSubSecao('hub'); // Chegou no fim da fila (Tabela)? Volta para o menu.
-        } else {
-          setSubSecao(ORDEM_SUBSECOES[indexAtual + 1]); // Pula para o próximo card.
-        }
-      } else if (distanciaX < -70) { // 👉 Arrastou para a direita (Voltar para o anterior).
-        if (indexAtual === 0) {
-          setSubSecao('hub'); // Estava no primeiro card (Instruções)? Volta para o menu.
-        } else {
-          setSubSecao(ORDEM_SUBSECOES[indexAtual - 1]); // Retorna para o card anterior.
-        }
+    if (Math.abs(distanciaX) > 70) { 
+      if (distanciaX > 70) { 
+        if (indexAtual === ORDEM_SUBSECOES.length - 1) { setSubSecao('hub'); } 
+        else { setSubSecao(ORDEM_SUBSECOES[indexAtual + 1]); }
+      } else if (distanciaX < -70) { 
+        if (indexAtual === 0) { setSubSecao('hub'); } 
+        else { setSubSecao(ORDEM_SUBSECOES[indexAtual - 1]); }
       }
     }
-    touchStartX.current = null; touchEndX.current = null; // Reseta a memória de toque.
+    touchStartX.current = null; touchEndX.current = null; 
   };
 
-  useEffect(() => { // Lógica que busca os dados no Firebase em tempo real.
+  useEffect(() => { // Busca as informações no banco de dados assim que a tela abre.
     const unsubAvisos = onSnapshot(query(collection(db, "avisos"), orderBy("ordem", "asc")), (snap) => { 
       setAvisos(snap.docs.map(d => ({ id: d.id, ...d.data() }))); 
       setLoading(false); 
@@ -91,7 +79,7 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
     return () => { unsubAvisos(); unsubTabela(); }; 
   }, []); 
 
-  const handleSalvarAviso = async (e) => { // Salva novo aviso ou edição no banco.
+  const handleSalvarAviso = async (e) => { // Função para o Mestre salvar um novo aviso.
     e.preventDefault(); 
     setEnviando(true); 
     try {
@@ -103,7 +91,7 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
     finally { setEnviando(false); } 
   };
 
-  const handleSalvarLinha = async (e) => { // Salva alterações na tabela musical.
+  const handleSalvarLinha = async (e) => { // Função para o Mestre salvar a tabela técnica.
     e.preventDefault(); 
     setEnviando(true); 
     try {
@@ -116,30 +104,31 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
 
   const fecharModal = () => { setMostraAdd(false); setEditando(null); }; 
 
-  if (loading) return <div className="flex flex-col items-center justify-center py-20 gap-4"><Loader2 className="animate-spin text-slate-300" size={32} /></div>;
+  if (loading) return <div className="flex flex-col items-center justify-center py-20 gap-4"><Loader2 className="animate-spin text-slate-300" size={32} /></div>; 
 
   const cabecalho = avisos.find(a => a.categoria === 'Cabecalho'); 
   const instrucoes = avisos.filter(a => a.categoria === 'Instrução'); 
   const diagramaMeta = avisos.find(a => a.categoria === 'Diagrama'); 
 
-  const CARDS_INFORMATIVOS = [ // Lista de botões do menu principal com trava de "Em Breve".
-    { id: 'instrucoes', titulo: 'Instruções', desc: 'Orientações e circulares da regional', icone: <BookText size={20}/>, cor: 'bg-blue-600', bloqueado: false },
-    { id: 'diagrama', titulo: 'Diagrama', desc: 'Posicionamento oficial da orquestra', icone: <LayoutDashboard size={20}/>, cor: 'bg-amber-500', bloqueado: false },
-    { id: 'tabela', titulo: 'Onde Poderei Tocar', desc: 'Permissões por classificação de serviço', icone: <MapPinCheck size={20}/>, cor: 'bg-emerald-600', bloqueado: false },
-    { id: 'historico', titulo: 'Histórico Musical', desc: 'A trajetória da música na Regional', icone: <History size={20}/>, cor: 'bg-slate-700', bloqueado: true },
-    { id: 'programa', titulo: 'Programa Mínimo', desc: 'Métodos e hinos para exames', icone: <Music2 size={20}/>, cor: 'bg-purple-600', bloqueado: true },
+  // 🎹 DEFINIÇÃO DOS BOTÕES ATUALIZADA: Liberados os cadeados do histórico e programa mínimo.
+  const CARDS_INFORMATIVOS = [ 
+    { id: 'instrucoes', titulo: 'Instruções', desc: 'Orientações e circulares da regional', icone: <BookText size={20}/>, cor: 'bg-blue-600', bloqueado: false, linkExterno: null }, 
+    { id: 'diagrama', titulo: 'Diagrama', desc: 'Posicionamento oficial da orquestra', icone: <LayoutDashboard size={20}/>, cor: 'bg-amber-500', bloqueado: false, linkExterno: null }, 
+    { id: 'tabela', titulo: 'Onde Poderei Tocar', desc: 'Permissões por classificação de serviço', icone: <MapPinCheck size={20}/>, cor: 'bg-emerald-600', bloqueado: false, linkExterno: null }, 
+    { id: 'historico', titulo: 'Histórico Musical', desc: 'Clique para abrir o arquivo oficial', icone: <History size={20}/>, cor: 'bg-slate-700', bloqueado: false, linkExterno: "https://drive.google.com/file/d/1w94EOUALaisb_MdUV6H7jqbI7MKSncKZ/view" }, 
+    { id: 'programa', titulo: 'Programa Mínimo', desc: 'Métodos para músicos e organistas', icone: <Music2 size={20}/>, cor: 'bg-purple-600', bloqueado: false, linkExterno: null }, 
   ];
 
   return ( 
     <div className="flex flex-col animate-in px-6 py-6 space-y-6 pb-24 text-left no-scrollbar relative min-h-[70vh]"
-         onTouchStart={(e) => touchStartX.current = e.targetTouches[0].clientX} // Marca o início do movimento do dedo.
-         onTouchMove={(e) => touchEndX.current = e.targetTouches[0].clientX} // Acompanha o rastro do dedo.
-         onTouchEnd={aoFinalizarToqueInterno}> {/* Decide qual informativa mostrar ao soltar o dedo. */}
+         onTouchStart={(e) => touchStartX.current = e.targetTouches[0].clientX} 
+         onTouchMove={(e) => touchEndX.current = e.targetTouches[0].clientX} 
+         onTouchEnd={aoFinalizarToqueInterno}> 
       
       {feedback && <Feedback mensagem={feedback.msg} tipo={feedback.tipo} aoFechar={() => setFeedback(null)} />}
 
       {/* 🟢 VISÃO 1: HUB DE INFORMATIVOS (MENU DE 5 CARDS) */}
-      {subSecao === 'hub' && (
+      {subSecao === 'hub' && ( 
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
           <div className="relative">
             <div className="border-2 border-slate-950 p-6 rounded-[2.5rem] text-center space-y-4 bg-white shadow-sm">
@@ -155,11 +144,16 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
           </div>
 
           <div className="grid grid-cols-1 gap-3">
-            {CARDS_INFORMATIVOS.map((card) => (
+            {CARDS_INFORMATIVOS.map((card) => ( 
               <button 
                 key={card.id} 
-                disabled={card.bloqueado} // Trava o clique se estiver "Em Breve".
-                onClick={() => setSubSecao(card.id)} 
+                disabled={card.bloqueado} 
+                onClick={() => {
+                  // LÓGICA INTELIGENTE DE CLIQUE:
+                  if (card.id === 'historico') { window.open(card.linkExterno, '_blank'); } // Atalho direto para o Histórico.
+                  else if (card.id === 'programa') { setShowProgramaMinimo(true); } // Abre a janelinha de escolha do Programa Mínimo.
+                  else { setSubSecao(card.id); } // Entra nas telas internas normais.
+                }} 
                 className={`bg-white p-5 rounded-[2.2rem] border border-slate-200 flex items-center justify-between group transition-all shadow-sm ${card.bloqueado ? 'opacity-40 grayscale cursor-not-allowed' : 'active:scale-[0.98]'}`}
               >
                 <div className="flex items-center gap-4">
@@ -174,34 +168,41 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
                     <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest mt-1.5">{card.desc}</span>
                   </div>
                 </div>
-                {!card.bloqueado && <div className="bg-slate-50 p-2 rounded-xl text-slate-300 group-hover:text-slate-950 transition-colors"><ChevronRight size={18} /></div>}
+                {!card.bloqueado && (
+                  <div className="bg-slate-50 p-2 rounded-xl text-slate-300 group-hover:text-slate-950 transition-colors">
+                    {card.id === 'historico' || card.id === 'programa' ? <ChevronRight size={18} className="rotate-[-45deg]"/> : <ChevronRight size={18} />}
+                  </div>
+                )}
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* 🔵 NAVEGAÇÃO DE CONTEÚDO (DENTRO DOS CARDS ESPECÍFICOS) COM TRANSIÇÃO SUAVE */}
+      {/* 🔵 NAVEGAÇÃO DE CONTEÚDO (SUB-SEÇÕES) */}
       <AnimatePresence mode="wait">
-        {subSecao === 'instrucoes' && (
+        {subSecao === 'instrucoes' && ( 
           <motion.div key="inst" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} transition={{ duration: 0.3 }}>
             <SecaoInstrucoes instrucoes={instrucoes} masterLogado={masterLogado} setEditando={setEditando} setFormAviso={setFormAviso} setMostraAdd={setMostraAdd} />
           </motion.div>
         )}
-        {subSecao === 'diagrama' && (
+        {subSecao === 'diagrama' && ( 
           <motion.div key="diag" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} transition={{ duration: 0.3 }}>
             <SecaoDiagrama diagramaMeta={diagramaMeta} masterLogado={masterLogado} setEditando={setEditando} setFormAviso={setFormAviso} setMostraAdd={setMostraAdd} />
           </motion.div>
         )}
-        {subSecao === 'tabela' && (
+        {subSecao === 'tabela' && ( 
           <motion.div key="tab" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} transition={{ duration: 0.3 }}>
             <SecaoTabelaPermissoes linhasTabela={linhasTabela} masterLogado={masterLogado} setEditandoLinha={setEditandoLinha} setFormLinha={setFormLinha} />
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* INDICADOR DE PÁGINAS DO CARROSSEL (BOLINHAS NO RODAPÉ) */}
-      {subSecao !== 'hub' && (
+      {/* 🏁 CHAMADA DO MODAL PROGRAMA MÍNIMO: Aparece apenas quando acionado pelo card. */}
+      {showProgramaMinimo && <SecaoProgramaMinimo aoFechar={() => setShowProgramaMinimo(false)} />}
+
+      {/* INDICADOR DE PÁGINAS (BOLINHAS) */}
+      {subSecao !== 'hub' && ( 
         <div className="flex justify-center gap-2 mt-4 opacity-20">
           {ORDEM_SUBSECOES.map((s, i) => (
             <div key={i} className={`w-1.5 h-1.5 rounded-full ${subSecao === s ? 'bg-slate-950 scale-125' : 'bg-slate-400'}`} />
@@ -214,7 +215,7 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
         <span className="text-[7px] font-black uppercase tracking-[0.4em] text-center">Regional Jundiaí • Oficial</span>
       </div>
 
-      {/* MODAIS DE EDIÇÃO (Controlado pelo Mestre) */}
+      {/* MODAIS DE EDIÇÃO DO MASTER */}
       {editandoLinha && createPortal(
         <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={() => setEditandoLinha(null)}></div>
@@ -249,7 +250,7 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
               ) : (
                 <div className="space-y-3">
                   <input required type="text" value={formAviso.titulo} onChange={ev => setFormAviso({...formAviso, titulo: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold uppercase outline-none" placeholder="Título" />
-                  <textarea required rows="6" value={formAviso.conteudo} onChange={ev => setFormAviso({...formAformatarInformativo, conteudo: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold uppercase resize-none outline-none" placeholder="Conteúdo informativo" />
+                  <textarea required rows="6" value={formAviso.conteudo} onChange={ev => setFormAviso({...formAviso, conteudo: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold uppercase resize-none outline-none" placeholder="Conteúdo informativo" />
                   {formAviso.categoria === 'Cabecalho' && <input type="text" value={formAviso.tituloSecundario} onChange={ev => setFormAviso({...formAviso, tituloSecundario: ev.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-4 px-4 text-[11px] font-bold outline-none uppercase" placeholder="Data da Reunião" />}
                 </div>
               )}
