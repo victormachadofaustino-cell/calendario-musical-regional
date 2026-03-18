@@ -8,6 +8,22 @@ import { isMaster } from '../constants/permissions'; // Motor que verifica se o 
 // O Header agora coordena o título dinâmico e os botões de acesso rápido ao perfil e aos tickets.
 const Header = ({ modulo, setModulo, user, userData, pendenciasCount, ticketsCount, titulosModulos, setShowLoginModal, setShowPainelMaster }) => { 
   
+  // 🧠 FUNÇÃO INTELIGENTE DE VOLTAR: Decide se fecha um "capítulo" (card) ou o "livro" (módulo).
+  const lidarComVoltar = () => {
+    // 1. Caso Especial: Módulo de Informativos
+    if (modulo === 'avisos') {
+      // Se houver um card aberto (detectado pelo histórico salvo no InformativosHub)...
+      if (window.history.state?.subSecao && window.history.state.subSecao !== 'hub') {
+        window.history.back(); // ...ele apenas "desfaz" a entrada no card, voltando ao menu interno.
+        return; // Interrompe para não fechar a tela de informativos ainda.
+      }
+    }
+    
+    // 2. Comportamento Padrão ou quando já está no Menu de um módulo:
+    // Retorna o Maestro (App.jsx) para o palco principal (Visão Geral).
+    setModulo('hub');
+  };
+
   return ( // Início da estrutura visual do cabeçalho fixo no topo.
     <header className="sticky top-0 left-0 w-full z-[1000] bg-white pt-4 pb-5 px-6 rounded-b-[2rem] shadow-sm border-b border-slate-200 shrink-0"> 
       {/* ☝️ EXPLICAÇÃO: 'sticky top-0' mantém o cabeçalho parado no topo mesmo ao rolar a página. */}
@@ -31,20 +47,24 @@ const Header = ({ modulo, setModulo, user, userData, pendenciasCount, ticketsCou
                 <span className="font-medium text-slate-400 italic ml-1.5">{titulosModulos[modulo]?.p2 || 'Geral'}</span>
               </motion.h1>
             </AnimatePresence>
+            {/* Rótulo fixo que identifica o App */}
             <span className="text-slate-950 text-[7px] font-black uppercase tracking-[0.4em] mt-1.5 opacity-60">Calendário Musical</span>
           </div>
 
           {/* LADO DIREITO: Botões de Ação (Tickets, Perfil e Sair) */}
           <div className="flex items-center gap-1.5">
             
-            {/* BOTÃO VOLTAR: Só aparece se o usuário não estiver na tela inicial (Hub) */}
+            {/* BOTÃO VOLTAR: Agora usa a inteligência de 'lidarComVoltar' para não travar no menu de cards */}
             {modulo !== 'hub' && (
-              <button onClick={() => setModulo('hub')} className="bg-slate-100 p-2.5 rounded-xl text-slate-400 active:scale-90 transition-all">
+              <button 
+                onClick={lidarComVoltar} 
+                className="bg-slate-950 p-2.5 rounded-xl text-white active:scale-90 transition-all shadow-md"
+              >
                 <ArrowLeft size={16} />
               </button>
             )}
 
-            {/* 💡 NOVO BOTÃO DE TICKETS: Exclusivo para o Master gerenciar os chamados dos irmãos */}
+            {/* 💡 BOTÃO DE TICKETS: Exclusivo para o Master gerenciar chamados */}
             {isMaster(userData) && (
               <div className="relative">
                 <button 
@@ -54,7 +74,7 @@ const Header = ({ modulo, setModulo, user, userData, pendenciasCount, ticketsCou
                   <Lightbulb size={16} fill={modulo === 'tickets' ? "currentColor" : "none"} />
                 </button>
                 
-                {/* NOTIFICAÇÃO AZUL: Indica quantos tickets novos de suporte estão na fila */}
+                {/* NOTIFICAÇÃO AZUL: Contador de suporte pendente */}
                 {ticketsCount > 0 && (
                   <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 border-2 border-white rounded-full flex items-center justify-center text-[8px] font-black text-white animate-pulse shadow-md pointer-events-none">
                     {ticketsCount}
@@ -63,7 +83,7 @@ const Header = ({ modulo, setModulo, user, userData, pendenciasCount, ticketsCou
               </div>
             )}
             
-            {/* BOTÃO DE PERFIL/MASTER: Abre o Painel Administrativo ou o Login */}
+            {/* BOTÃO DE PERFIL: Abre Login ou Gestão Master */}
             <div className="relative">
               <button 
                 onClick={() => !user ? setShowLoginModal(true) : setShowPainelMaster(true)}
@@ -72,7 +92,7 @@ const Header = ({ modulo, setModulo, user, userData, pendenciasCount, ticketsCou
                 {user ? <User size={16} /> : <Lock size={16} />}
               </button>
               
-              {/* NOTIFICAÇÃO LARANJA: Indica quantos novos pedidos de acesso ou mudanças de ensaio existem */}
+              {/* NOTIFICAÇÃO LARANJA: Alerta de novos cadastros/sugestões */}
               {pendenciasCount > 0 && isMaster(userData) && (
                 <span className="absolute -top-1 -left-1 w-4 h-4 bg-orange-600 border-2 border-white rounded-full flex items-center justify-center text-[8px] font-black text-white animate-bounce shadow-md pointer-events-none">
                   {pendenciasCount}
@@ -80,7 +100,7 @@ const Header = ({ modulo, setModulo, user, userData, pendenciasCount, ticketsCou
               )}
             </div>
 
-            {/* BOTÃO DE SAIR: Encerra a sessão do colaborador logado */}
+            {/* BOTÃO DE SAIR: Encerra a sessão */}
             {user && (
               <button onClick={() => signOut(auth)} className="bg-red-50 text-red-500 p-2.5 rounded-xl active:scale-90 ml-0.5">
                 <LogOut size={16} />
