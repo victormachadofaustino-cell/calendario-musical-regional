@@ -31,7 +31,7 @@ export function useAuth() { // Função principal que será usada pelo resto do 
               const qUsers = query(collection(db, "usuarios"), where("status", "==", "pendente"));
               const qSugestoes = collection(db, "sugestoes_pendentes");
 
-              // Espaços de memória para guardar as contagens parciais.
+              // Espaços de memória para guardar as contagens parciais e evitar travamentos.
               let lastUsersCount = 0;
               let lastSugCount = 0;
 

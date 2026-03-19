@@ -58,7 +58,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
         await addDoc(collection(db, "ensaios_locais"), novoEnsaio); // Grava no banco.
         setFeedback({ msg: "Ensaio adicionado com sucesso!", tipo: 'sucesso' }); // Exibe aviso de sucesso.
       } else { // Se for um Oficial de cidade, envia como sugestão para aprovação.
-        await addDoc(collection(db, "sugestoes_pendentes"), { // 👈 AFINAÇÃO: Usa a cidade do perfil para passar nas regras do banco.
+        await addDoc(collection(db, "sugestoes_pendentes"), { // Envia sugestão territorial correta.
           tipo: 'local_criacao', 
           cidade: userData?.cidade || novoEnsaio.cidade, 
           localidade: novoEnsaio.localidade, 
@@ -71,7 +71,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
       }
       setMostraAdd(false); // Fecha a janela de cadastro.
       setNovoEnsaio({ cidade: userData?.cidade || 'Jundiaí', localidade: '', dia: '', hora: '', encarregado: '', contato: '', observacao: '' }); // Reseta os campos.
-    } catch (err) { setFeedback({ msg: "Erro ao salvar ensaio", tipo: 'erro' }); } 
+    } catch (err) { setFeedback({ msg: "Erro ao salvar ensaio", tipo: 'erro' }); } // Exibe erro se algo falhar.
     finally { setEnviando(false); } // Libera o botão para novos cliques.
   };
 
@@ -79,9 +79,9 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
     try {
       if (isMaster(userData)) { // Master apaga do banco de dados imediatamente.
         await deleteDoc(doc(db, "ensaios_locais", confirmaExclusao.id)); // Remove o registo oficial.
-        setFeedback({ msg: "Ensaio removido do sistema!", tipo: 'sucesso' }); //
+        setFeedback({ msg: "Ensaio removido do sistema!", tipo: 'sucesso' }); // Aviso de sucesso.
       } else { // Editor solicita a remoção ao administrador regional.
-        await addDoc(collection(db, "sugestoes_pendentes"), { // 👈 AFINAÇÃO: Assinatura territorial correta.
+        await addDoc(collection(db, "sugestoes_pendentes"), { // Envia pedido de remoção para análise.
           ensaioId: confirmaExclusao.id, 
           tipo: 'local_exclusao', 
           cidade: userData?.cidade || confirmaExclusao.cidade, 
@@ -91,10 +91,10 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
           status: 'pendente', 
           dataSolicitacao: new Date() 
         });
-        setFeedback({ msg: "Pedido de remoção enviado!", tipo: 'sucesso' }); //
+        setFeedback({ msg: "Pedido de remoção enviado!", tipo: 'sucesso' }); // Aviso de sucesso.
       }
       setConfirmaExclusao(null); // Fecha o aviso de confirmação.
-    } catch (err) { setFeedback({ msg: "Erro na operação", tipo: 'erro' }); } //
+    } catch (err) { setFeedback({ msg: "Erro na operação", tipo: 'erro' }); } // Aviso de erro.
   };
 
   const enviarSugestaoOuEdicao = async (ev) => { // Lógica principal do botão "Salvar" no modo edição.
@@ -103,10 +103,10 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
     try {
       const dadosSaneados = { ...formSugestao, dia: formSugestao.dia }; // Prepara o pacote de dados.
       if (isMaster(userData)) { // Se for o Master, atualiza o banco oficial na hora.
-        await updateDoc(doc(db, "ensaios_locais", sugestaoAberta.id), dadosSaneados); // Altera o documento.
-        setFeedback({ msg: "Dados atualizados com sucesso!", tipo: 'sucesso' }); //
+        await updateDoc(doc(db, "ensaios_locais", sugestaoAberta.id), dadosSaneados); // Altera o documento oficial.
+        setFeedback({ msg: "Dados atualizados com sucesso!", tipo: 'sucesso' }); // Aviso de sucesso.
       } else { // Se for colaborador de cidade, envia a correção para a fila.
-        await addDoc(collection(db, "sugestoes_pendentes"), { // 👈 CORREÇÃO CRÍTICA: Usa 'userData.cidade' para bater com as Rules do Firebase.
+        await addDoc(collection(db, "sugestoes_pendentes"), { // Usa a cidade correta para as regras do banco.
           ensaioId: sugestaoAberta.id, 
           localidade: sugestaoAberta.localidade, 
           cidade: userData?.cidade || sugestaoAberta.cidade, 
@@ -117,47 +117,46 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
           status: 'pendente', 
           dataSolicitacao: new Date() 
         });
-        setFeedback({ msg: "Sugestão enviada para análise!", tipo: 'sucesso' }); //
+        setFeedback({ msg: "Sugestão enviada para análise!", tipo: 'sucesso' }); // Aviso de sucesso.
       }
       setSugestaoAberta(null); // Fecha a janela de edição.
-    } catch (error) { setFeedback({ msg: "Falha ao processar pedido", tipo: 'erro' }); } // Exibe erro se o banco recusar.
+    } catch (error) { setFeedback({ msg: "Falha ao processar pedido", tipo: 'erro' }); } // Aviso de erro.
     finally { setEnviando(false); } // Garante que a interface destrave.
   };
 
   const ensaiosFiltradosFinal = useMemo(() => { // Filtra e organiza a lista por semana, dia e cidade.
     let filtrados = [...todosEnsaios]; // Começa com a lista completa vinda do banco.
-    if (semanaSelecionada) filtrados = filtrados.filter(e => e.dia.includes(semanaSelecionada.replace(/\D/g, "") || "Últ")); // Filtra pela semana (1ª, 2ª...).
-    if (diaSelecionado) filtrados = filtrados.filter(e => e.dia.includes(diaSelecionado)); // Filtra pelo dia (Dom, Seg...).
-    if (filtroCidade !== 'Todas') filtrados = filtrados.filter(e => normalizarTexto(e.cidade) === normalizarTexto(filtroCidade)); // Filtra por cidade de forma inteligente.
-    if (busca) { // Filtra pelo texto digitado na lupa.
-      const b = normalizarTexto(busca); //
-      filtrados = filtrados.filter(e => normalizarTexto(e.localidade).includes(b) || (e.encarregado && normalizarTexto(e.encarregado).includes(b))); //
+    if (semanaSelecionada) filtrados = filtrados.filter(e => e.dia.includes(semanaSelecionada.replace(/\D/g, "") || "Últ")); // Filtra pela semana.
+    if (diaSelecionado) filtrados = filtrados.filter(e => e.dia.includes(diaSelecionado)); // Filtra pelo dia da semana.
+    if (filtroCidade !== 'Todas') filtrados = filtrados.filter(e => normalizarTexto(e.cidade) === normalizarTexto(filtroCidade)); // Filtra por cidade.
+    if (busca) { // Filtra pelo texto digitado na busca.
+      const b = normalizarTexto(busca); // Padroniza o texto de busca.
+      filtrados = filtrados.filter(e => normalizarTexto(e.localidade).includes(b) || (e.encarregado && normalizarTexto(e.encarregado).includes(b))); // Procura na igreja ou encarregado.
     }
 
-    const PESO_SEMANA = { "1ª": 1, "1º": 1, "2ª": 2, "2º": 2, "3ª": 3, "3º": 3, "4ª": 4, "4º": 4, "Últ": 5 }; // Define a ordem cronológica das semanas.
-    const PESO_DIA = { "Dom": 0, "Seg": 1, "Ter": 2, "Qua": 3, "Qui": 4, "Sex": 5, "Sáb": 6 }; // Define a ordem dos dias da semana.
+    const PESO_SEMANA = { "1ª": 1, "1º": 1, "2ª": 2, "2º": 2, "3ª": 3, "3º": 3, "4ª": 4, "4º": 4, "Últ": 5 }; // Ordem cronológica das semanas.
+    const PESO_DIA = { "Dom": 0, "Seg": 1, "Ter": 2, "Qua": 3, "Qui": 4, "Sex": 5, "Sáb": 6 }; // Ordem cronológica dos dias.
 
-    return filtrados.sort((a, b) => { // Ordena a lista para o utilizador.
-      const semA = Object.keys(PESO_SEMANA).find(s => a.dia.includes(s)) || ""; //
-      const semB = Object.keys(PESO_SEMANA).find(s => b.dia.includes(s)) || ""; //
-      const diffSemana = (PESO_SEMANA[semA] || 99) - (PESO_SEMANA[semB] || 99); // Compara semanas.
-      if (diffSemana !== 0) return diffSemana; //
-      const diaA = Object.keys(PESO_DIA).find(d => a.dia.includes(d)) || ""; //
-      const diaB = Object.keys(PESO_DIA).find(d => b.dia.includes(d)) || ""; //
-      const diffDia = (PESO_DIA[diaA] ?? 99) - (PESO_DIA[diaB] ?? 99); // Compara dias.
-      if (diffDia !== 0) return diffDia; //
-      return a.hora.localeCompare(b.hora) || a.localidade.localeCompare(b.localidade); // Desempata pela hora e nome da igreja.
+    return filtrados.sort((a, b) => { // Organiza a lista final.
+      const semA = Object.keys(PESO_SEMANA).find(s => a.dia.includes(s)) || ""; // Identifica a semana do ensaio A.
+      const semB = Object.keys(PESO_SEMANA).find(s => b.dia.includes(s)) || ""; // Identifica a semana do ensaio B.
+      const diffSemana = (PESO_SEMANA[semA] || 99) - (PESO_SEMANA[semB] || 99); // Compara as semanas.
+      if (diffSemana !== 0) return diffSemana; // Retorna a diferença se houver.
+      const diaA = Object.keys(PESO_DIA).find(d => a.dia.includes(d)) || ""; // Identifica o dia do ensaio A.
+      const diaB = Object.keys(PESO_DIA).find(d => b.dia.includes(d)) || ""; // Identifica o dia do ensaio B.
+      const diffDia = (PESO_DIA[diaA] ?? 99) - (PESO_DIA[diaB] ?? 99); // Compara os dias.
+      if (diffDia !== 0) return diffDia; // Retorna a diferença se houver.
+      return a.hora.localeCompare(b.hora) || a.localidade.localeCompare(b.localidade); // Desempata pela hora e nome.
     });
-  }, [todosEnsaios, semanaSelecionada, diaSelecionado, filtroCidade, busca]); // Atualiza sempre que um filtro mudar.
+  }, [todosEnsaios, semanaSelecionada, diaSelecionado, filtroCidade, busca]); // Recalcula se os filtros mudarem.
 
-  if (loading) return <div className="py-20 text-center animate-pulse font-black text-[10px] uppercase">Sincronizando Banco...</div>; // Efeito visual de carregamento.
+  if (loading) return <div className="py-20 text-center animate-pulse font-black text-[10px] uppercase">Sincronizando Banco...</div>; // Carregamento visual.
 
-  return ( // Renderização visual da tela de Ensaios Locais.
+  return ( // Renderização da tela principal.
     <div className="w-full text-left relative flex flex-col">
       {feedback && <Feedback mensagem={feedback.msg} tipo={feedback.tipo} aoFechar={() => setFeedback(null)} />}
       
-      {/* Botão de Adicionar Ensaio: Aparece para o Master ou para o Oficial dono daquela cidade. */}
-      {podeVerBotoesDeGestao(userData, userData?.cidade) && ( //
+      {podeVerBotoesDeGestao(userData, userData?.cidade) && ( // Botão de adição baseado na permissão.
         <div className="px-6 pt-4">
           <button onClick={() => { setNovoEnsaio(prev => ({...prev, cidade: userData.cidade})); setMostraAdd(true); }} className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 shadow-xl active:scale-95 transition-all">
             <Plus size={16}/> Novo Ensaio em {isMaster(userData) ? 'Qualquer Cidade' : userData.cidade}
@@ -165,7 +164,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
         </div>
       )}
 
-      {/* BARRA DE FILTROS: Fixa no topo para facilitar a navegação rápida. */}
+      {/* Seção de Filtros Superior */}
       <div className="sticky top-0 z-30 bg-[#F1F5F9]/95 backdrop-blur-xl px-6 py-4 space-y-3 border-b border-slate-200">
         <div className="flex gap-2">
           <div className="relative flex-[2]">
@@ -194,11 +193,11 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
         </div>
       </div>
 
-      {/* LISTAGEM POR CIDADE: Organiza os ensaios em sanfonas (accordions) para melhor leitura. */}
+      {/* Listagem de Ensaios por Cidade */}
       <div className="space-y-4 px-6 pb-32 mt-6">
         {CIDADES_LISTA.filter(c => (filtroCidade === 'Todas' || normalizarTexto(c) === normalizarTexto(filtroCidade))).map(cidade => {
           const ensaios = ensaiosFiltradosFinal.filter(e => normalizarTexto(e.cidade) === normalizarTexto(cidade));
-          if (ensaios.length === 0) return null; // Não mostra a cidade se não houver ensaios filtrados nela.
+          if (ensaios.length === 0) return null;
           const isAberta = cidadeAberta === cidade;
 
           return (
@@ -229,11 +228,10 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
                         <div className="absolute top-5 right-5 flex flex-col items-end gap-2">
                           <div className="bg-slate-950 text-white text-[9px] font-black px-3 py-3 rounded-xl uppercase shrink-0 shadow-md">{e.dia}</div>
                           <div className="flex gap-1">
-                            {/* Regra Territorial Afinada: Agora libera o lápis mesmo com abreviações territoriais. */}
-                            {podeVerBotoesDeGestao(userData, e.cidade) && ( //
+                            {podeVerBotoesDeGestao(userData, e.cidade) && ( // Mostra botão de editar conforme a regra.
                               <button onClick={() => { setSugestaoAberta(e); setFormSugestao({ ...e, cidade: e.cidade }); }} className="bg-amber-100 text-amber-600 p-2.5 rounded-xl active:scale-90 border border-amber-200"><Edit3 size={16}/></button>
                             )}
-                            {podeVerBotoesDeGestao(userData, e.cidade) && ( //
+                            {podeVerBotoesDeGestao(userData, e.cidade) && ( // Mostra botão de excluir conforme a regra.
                               <button onClick={() => setConfirmaExclusao(e)} className="bg-red-100 text-red-600 p-2.5 rounded-xl active:scale-90 border border-red-200 shadow-sm"><Trash2 size={16}/></button>
                             )}
                           </div>
@@ -242,7 +240,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
 
                       <div className="flex items-center gap-1.5 font-black text-slate-950 pb-2"><Clock size={14} className="text-amber-500 shrink-0"/> {e.hora}</div>
 
-                      {e.observacao && (
+                      {e.observacao && ( // Destaque para observações importantes.
                         <div className="bg-red-50 p-3 rounded-2xl border border-red-100 flex gap-2">
                           <AlertTriangle size={14} className="text-red-500 shrink-0 mt-0.5" />
                           <p className="text-[9px] font-black text-red-700 uppercase leading-relaxed text-left">{e.observacao}</p>
@@ -263,7 +261,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
         })}
       </div>
 
-      {/* FORMULÁRIO DE EDIÇÃO/CRIAÇÃO: Janela flutuante para gerir os dados dos ensaios locais. */}
+      {/* Janelas Modais de Gestão */}
       {(sugestaoAberta || mostraAdd) && createPortal(
         <div onClick={() => { setSugestaoAberta(null); setMostraAdd(false); }} className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
           <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left">
@@ -316,8 +314,8 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
               <div className="flex flex-col gap-1">
                 <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Observações</span>
                 <textarea rows="2" value={mostraAdd ? novoEnsaio.observacao : formSugestao.observacao} 
-                       onChange={ev => mostraAdd ? setNovoEnsaio({...novoEnsaio, observacao: ev.target.value}) : setFormSugestao({...formSugestao, observacao: ev.target.value})} 
-                       className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[10px] font-bold uppercase outline-none resize-none" />
+                        onChange={ev => mostraAdd ? setNovoEnsaio({...novoEnsaio, observacao: ev.target.value}) : setFormSugestao({...formSugestao, observacao: ev.target.value})} 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[10px] font-bold uppercase outline-none resize-none" />
               </div>
               <button disabled={enviando} type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest flex justify-center items-center gap-2 active:scale-95 shadow-xl transition-all mt-4">
                 <Send size={16}/> {enviando ? 'Processando...' : (isMaster(userData) ? 'Salvar no Banco' : 'Enviar Sugestão')}
@@ -327,7 +325,6 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
         </div>, document.body
       )}
 
-      {/* MODAL DE CONFIRMAÇÃO: Protege contra eliminações acidentais da agenda. */}
       {confirmaExclusao && createPortal(
         <div onClick={() => setConfirmaExclusao(null)} className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
           <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-center">
@@ -344,4 +341,4 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
   );
 };
 
-export default EnsaiosLocais; // Exporta a lista de ensaios locais afinada para aceitar assinaturas territoriais resilientes.
+export default EnsaiosLocais; // Exporta a lista de ensaios locais afinada.

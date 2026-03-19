@@ -1,111 +1,111 @@
 // src/constants/permissions.js // Localização do arquivo no projeto para o sistema se encontrar.
-import { normalizarTexto } from './comuns'; // 👈 AFINAÇÃO: Importa a função que remove acentos e resolve o erro 'Paulista vs Pta'.
+import { normalizarTexto } from './comuns'; // Importa a função que "afina" os nomes das cidades, tirando acentos e padronizando abreviações.
 
 /** // Início do comentário de documentação técnica.
- * Este arquivo centraliza todas as regras de acesso do sistema. // Define o objetivo: ser o único lugar de regras.
- * Ele protege o App garantindo que cada irmão acesse apenas o que lhe compete. // Explica o valor para a Regional.
+ * Este arquivo centraliza todas as regras de acesso do sistema. // Define que as leis do App moram aqui.
+ * Ele protege o App garantindo que cada irmão acesse apenas o que lhe compete. // Proteção contra acessos indevidos.
  */ // Fim do comentário.
 
-// 🛠️ LISTA ÚNICA: Cargos oficiais para flegar em Reuniões e Cadastros.
-export const LISTA_CARGOS_OFICIAL = [ // Início da lista que o sistema usará para criar os botões de seleção.
-  "Encarregado Regional", // Membro da banca regional.
-  "Encarregado Local", // Responsável pela música na comum.
-  "Examinadora", // Responsável pelas organistas.
-  "Instrutor", // Irmão que ensina os alunos.
-  "Organista", // Irmã que toca o órgão nos cultos e ensaios.
-  "Ancião", // Liderança espiritual.
-  "Secretário da Música Regional", // O Maestro administrador.
-  "Secretário da Música Cidade" // O zelador musical da sede.
-]; // Fim da lista oficial.
+// 🛠️ LISTA ÚNICA: Cargos oficiais para aparecerem nos formulários de cadastro.
+export const LISTA_CARGOS_OFICIAL = [ // Inicia a lista de cargos que o sistema reconhece.
+  "Encarregado Regional", // Irmão da banca regional.
+  "Encarregado Local", // Irmão que cuida do ensaio da comum.
+  "Examinadora", // Irmã responsável pelas organistas.
+  "Instrutor", // Irmão que ensina novos músicos.
+  "Organista", // Irmã que serve no órgão.
+  "Ancião", // Liderança espiritual da irmandade.
+  "Secretário da Música Regional", // O administrador com visão total.
+  "Secretário da Música Cidade" // O administrador focado em uma cidade.
+]; // Fim da lista oficial de cargos.
 
-// 1. Definição estrita dos cargos que o sistema reconhece // Organização dos nomes oficiais para lógica.
-export const CARGOS = { // Objeto para o código comparar nomes sem erro de digitação.
-  REGIONAL: "Secretário da Música Regional", // Cargo máximo: o Maestro com controle total.
-  ANCIAO: "Ancião", // Cargo de liderança: vê gráficos, mas não mexe na configuração técnica.
-  ENC_REGIONAL: "Encarregado Regional", // Cargo de liderança: tem acesso à sala de estatísticas (Dashboard).
-  EXAMINADORA: "Examinadora", // Cargo operacional: cuida dos contatos da sua cidade.
-  SEC_CIDADE: "Secretário da Música Cidade" // Cargo operacional: focado na zeladoria da sua sede.
-}; // Fim da lista de cargos para lógica interna.
+// 1. Definição dos cargos para lógica interna do sistema.
+export const CARGOS = { // Objeto usado para o sistema comparar cargos sem erros de texto.
+  REGIONAL: "Secretário da Música Regional", // Define o nome exato do cargo de autoridade máxima.
+  ANCIAO: "Ancião", // Nome exato para identificar os anciães.
+  ENC_REGIONAL: "Encarregado Regional", // Nome exato para identificar a banca regional.
+  EXAMINADORA: "Examinadora", // Nome exato para identificar as examinadoras.
+  SEC_CIDADE: "Secretário da Música Cidade" // Nome exato para o administrador local.
+}; // Fim da lista para lógica.
 
 /** // Início do comentário explicativo.
- * 2. Motor de Identificação de Nível // O "Cérebro" que reconhece o crachá do usuário.
- * Esta função decide se o usuário é um 'Master' ou um 'Editor'. // Explica a separação de poderes.
+ * 2. Motor de Identificação de Nível // O "Crachá Virtual".
+ * Esta função decide se o usuário tem poder total ou limitado.
  */ // Fim do comentário.
-export const obterNivelAcesso = (usuario) => { // Função que analisa o perfil de quem logou.
-  if (!usuario) return 'visitante'; // Se não houver login, o sistema o trata como alguém da plateia (visitante).
+export const obterNivelAcesso = (usuario) => { // Função que analisa quem está logado no momento.
+  if (!usuario) return 'visitante'; // Se não estiver logado, é apenas alguém assistindo (visitante).
   
-  // REGRA DE OURO: Secretário Regional ou fleg de 'master' no banco ganha poder total.
-  if (usuario.cargo === CARGOS.REGIONAL || usuario.nivel === 'master') { // Verifica se é o cargo de Maestro Regional ou fleg Master.
-    return 'master'; // Retorna o nível de autoridade máxima.
-  } // Fecha a verificação de Master.
+  // REGRA DE OURO: Secretário Regional ou usuário marcado como 'master' no banco vira Maestro.
+  if (usuario.cargo === CARGOS.REGIONAL || usuario.nivel === 'master') { // Checa se o usuário é o Maestro Regional.
+    return 'master'; // Concede acesso total ao sistema.
+  } // Fecha a trava do Master.
   
-  return 'editor'; // Para todos os outros cargos oficiais, define como um colaborador restrito (Editor).
-}; // Fecha a função de nível de acesso.
+  return 'editor'; // Para os demais cargos, concede apenas o direito de sugerir mudanças (Editor).
+}; // Fecha a função de análise de nível.
 
 /** // Início do comentário explicativo.
- * 3. Tabela de Permissões por Nível // Define o que cada "crachá" libera na tela.
- * Define o que aparece na tela para cada tipo de usuário de forma técnica. // Propósito da tabela.
+ * 3. Tabela de Permissões por Nível // O que cada porta libera.
+ * Define tecnicamente o que cada tipo de usuário vê na tela.
  */ // Fim do comentário.
-export const REGRAS = { // Objeto que guarda as chaves de cada porta do App.
-  master: { // Regras para o Maestro (Master).
-    podeGerenciarUsuarios: true, // Pode aprovar novos irmãos ou remover quem saiu do cargo.
-    podeEditarTudo: true, // Vê botões de edição em qualquer cidade da Regional.
-    podeAdicionarTudo: true, // Pode criar novos ensaios em qualquer lugar.
-    podeExcluirDireto: true, // Pode apagar um erro no banco sem pedir permissão.
-    tipoAcao: 'direta' // O que ele faz, salva na hora no banco oficial.
-  }, // Fim das regras de Master.
-  editor: { // Regras para os Músicos/Secretários (Editores).
-    podeGerenciarUsuarios: false, // Não pode mexer no cadastro de outros irmãos.
-    podeEditarTudo: false, // Não edita direto; o botão de salvar vira um botão de "Sugerir".
-    podeAdicionarTudo: false, // Criação de novos itens passa pela triagem do Master.
-    podeExcluirDireto: false, // Se quiser apagar algo, o Master precisa autorizar.
-    tipoAcao: 'sugestao' // Tudo o que ele faz entra na "Fila de Fomentos" para o Master conferir.
-  }, // Fim das regras de Editor.
-  visitante: { // Regras para a Plateia (Visitante não logado).
-    podeGerenciarUsuarios: false, // Não vê nomes nem cargos de ninguém.
-    podeEditarTudo: false, // Não vê lápis de edição.
-    podeAdicionarTudo: false, // Não vê botão de sinal de mais (+).
-    podeExcluirDireto: false, // Não vê ícone de lixeira.
-    tipoAcao: 'bloqueado' // Apenas observa as informações públicas.
-  } // Fim das regras de Visitante.
-}; // Fim do objeto de regras.
+export const REGRAS = { // Objeto que guarda as chaves de cada funcionalidade.
+  master: { // Regras para o Maestro do Sistema.
+    podeGerenciarUsuarios: true, // Pode aprovar, bloquear ou editar outros usuários.
+    podeEditarTudo: true, // Pode alterar dados de qualquer igreja em qualquer cidade.
+    podeAdicionarTudo: true, // Pode cadastrar novos ensaios em qualquer lugar.
+    podeExcluirDireto: true, // Pode apagar dados sem passar por revisão.
+    tipoAcao: 'direta' // O que ele faz é salvo instantaneamente.
+  }, // Fim das regras do Master.
+  editor: { // Regras para os Secretários e Examinadoras locais.
+    podeGerenciarUsuarios: false, // Não tem permissão para mexer no cadastro de outros irmãos.
+    podeEditarTudo: false, // Não altera o banco direto; cria uma "Sugestão de Mudança".
+    podeAdicionarTudo: false, // Novos cadastros precisam de aprovação do Regional.
+    podeExcluirDireto: false, // Não apaga nada sem o aval do Master.
+    tipoAcao: 'sugestao' // Tudo o que ele faz entra numa fila de conferência.
+  }, // Fim das regras do Editor.
+  visitante: { // Regras para o público em geral.
+    podeGerenciarUsuarios: false, // Bloqueado.
+    podeEditarTudo: false, // Bloqueado (não vê o lápis).
+    podeAdicionarTudo: false, // Bloqueado (não vê o botão +).
+    podeExcluirDireto: false, // Bloqueado (não vê a lixeira).
+    tipoAcao: 'bloqueado' // Apenas visualiza informações públicas.
+  } // Fim das regras do Visitante.
+}; // Fim da tabela de regras.
 
 /** // Início do comentário explicativo.
- * 4. Verificação de Acesso ao Dashboard // A "Sala de Comando" da Regional.
- * Regra: Apenas Master, Ancião e Encarregado Regional visualizam gráficos. // Privacidade de dados.
+ * 4. Acesso à Sala de Estatísticas (Dashboard).
+ * Regra: Somente Liderança Regional visualiza os gráficos e métricas.
  */ // Fim do comentário.
-export const temAcessoAoDashboard = (usuario) => { // Função que decide se o botão de Dashboard aparece.
-  if (!usuario) return false; // Visitante nunca entra na sala de gráficos.
+export const temAcessoAoDashboard = (usuario) => { // Função que decide quem vê a tela de gráficos.
+  if (!usuario) return false; // Se não houver login, o acesso é negado.
   
-  const nivel = obterNivelAcesso(usuario); // Descobre o nível técnico (master ou editor).
+  const nivel = obterNivelAcesso(usuario); // Identifica se o usuário é Master ou Editor.
   
-  // Condição para entrar: Ser Master OU ter cargo de liderança regional.
-  return ( // Início da validação de acesso.
-    nivel === 'master' || // Se for o dono do sistema.
-    usuario.cargo === CARGOS.ANCIAO || // Se for um Ancião.
-    usuario.cargo === CARGOS.ENC_REGIONAL // Se for um Encarregado Regional.
-  ); // Retorna 'sim' se o usuário preencher qualquer um desses requisitos.
-}; // Fecha a função do Dashboard.
+  // Só entra se for Master ou se tiver cargo de Ancião ou Encarregado Regional.
+  return ( // Início da verificação.
+    nivel === 'master' || // Maestros sempre entram.
+    usuario.cargo === CARGOS.ANCIAO || // Anciães têm acesso aos dados da região.
+    usuario.cargo === CARGOS.ENC_REGIONAL // Encarregados Regionais também visualizam estatísticas.
+  ); // Retorna verdadeiro se um dos critérios for atendido.
+}; // Fim da função de acesso ao Dashboard.
 
 /** // Início do comentário explicativo.
- * 5. Validador de Territorialidade // A "Cerca Eletrônica" por cidade.
- * Garante que um colaborador de Jundiaí não sugira mudanças em Itatiba. // Proteção contra erros geográficos.
+ * 5. Validador de Territorialidade // A "Cerca por Cidade".
+ * Garante que cada colaborador cuide apenas da sua própria área de atuação.
  */ // Fim do comentário.
-export const podeVerBotoesDeGestao = (usuario, cidadeDoCard) => { // Decide se mostra o Lápis/Lixo nos cards de ensaio.
-  const nivel = obterNivelAcesso(usuario); // Identifica se é Master ou Editor.
+export const podeVerBotoesDeGestao = (usuario, cidadeDoCard) => { // Função que mostra ou esconde botões de edição.
+  const nivel = obterNivelAcesso(usuario); // Descobre o cargo técnico do usuário.
   
-  if (nivel === 'master') return true; // O Master é onipresente: vê e edita todas as cidades.
-  if (!usuario || nivel === 'visitante') return false; // Visitante nunca vê botões de gestão.
+  if (nivel === 'master') return true; // O Maestro Regional vê os botões em todas as cidades.
+  if (!usuario || nivel === 'visitante') return false; // Visitantes nunca veem botões de edição.
   
-  // 🛠️ CORREÇÃO: Agora usamos a Normalização para que 'Campo Limpo Paulista' seja igual a 'Campo Limpo Pta'.
-  const minhaCidadeLimpa = normalizarTexto(usuario.cidade || ""); // Limpa o nome da cidade no cadastro do músico.
-  const cidadeDoCardLimpa = normalizarTexto(cidadeDoCard || ""); // Limpa o nome da cidade que está no ensaio/contato.
+  // Usa a normalização para ignorar erros como 'Várzea Paulista' vs 'Varzea Pta'.
+  const minhaCidadeLimpa = normalizarTexto(usuario.cidade || ""); // Pega a cidade do cadastro do usuário e a "afina".
+  const cidadeDoCardLimpa = normalizarTexto(cidadeDoCard || ""); // Pega a cidade que está no ensaio e a "afina".
   
-  return minhaCidadeLimpa === cidadeDoCardLimpa; // Libera o acesso apenas se as cidades limpas forem idênticas.
-}; // Fecha a função de territorialidade.
+  return minhaCidadeLimpa === cidadeDoCardLimpa; // Só libera o lápis se o usuário pertencer àquela cidade.
+}; // Fim da regra de territorialidade.
 
 /** // Início do comentário explicativo.
- * 6. Atalhos Rápidos // Facilita a escrita do código em outras partes do App.
+ * 6. Atalhos para o Programador.
  */ // Fim do comentário.
-export const isMaster = (usuario) => obterNivelAcesso(usuario) === 'master'; // Atalho para perguntar: "É o Maestro?".
-export const isLogado = (usuario) => !!usuario; // Atalho para perguntar: "Alguém entrou no sistema?".
+export const isMaster = (usuario) => obterNivelAcesso(usuario) === 'master'; // Atalho rápido para checar se é o Maestro.
+export const isLogado = (usuario) => !!usuario; // Atalho rápido para saber se o usuário está logado.
