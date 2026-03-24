@@ -1,14 +1,16 @@
+// src/components/QuickCards.jsx // Identifica o arquivo que desenha os botões principais do menu inicial.
+
 import React from 'react'; // Ferramenta base para criar o componente visual.
 import { Music, Music2, Users, Info, BookOpen, CalendarDays } from 'lucide-react'; // Biblioteca de ícones oficiais do projeto.
 
-const QuickCards = ({ mudarModulo, user }) => { // Componente que desenha os botões principais de navegação do Hub.
+const QuickCards = ({ mudarModulo, user }) => { // Componente que desenha os botões, agora usando o 'user' para telemetria.
 
   return ( // Início da estrutura visual da grade de botões.
     <div className="px-6 space-y-3 mt-4"> 
-      {/* ☝️ EXPLICAÇÃO: Define o espaçamento lateral e entre os botões. */}
+      {/* Define o espaçamento lateral e entre as linhas de botões. */}
       
       <div className="grid grid-cols-2 gap-3 w-full"> 
-        {/* ☝️ EXPLICAÇÃO: Cria duas colunas de botões que se ajustam ao celular. */}
+        {/* Cria duas colunas de botões que se ajustam perfeitamente ao celular. */}
 
         {/* Botão: Ensaios Locais */}
         <button onClick={() => mudarModulo('locais')} className="bg-white p-6 rounded-[2.2rem] shadow-md border border-slate-200 flex flex-col items-center justify-center gap-4 active:scale-95 text-slate-950 transition-all">
@@ -41,7 +43,7 @@ const QuickCards = ({ mudarModulo, user }) => { // Componente que desenha os bot
           <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Cultos</span>
         </div>
 
-        {/* Botão: Reuniões (SÓ APARECE SE O IRMÃO ESTIVER LOGADO) */}
+        {/* Botão: Reuniões (Aparece para todos, mas mudarModulo no App.jsx valida o acesso do usuário logado) */}
         {user && ( 
           <button onClick={() => mudarModulo('reunioes')} className="bg-white p-6 rounded-[2.2rem] shadow-md border border-slate-200 flex flex-col items-center justify-center gap-4 active:scale-95 text-slate-950 animate-in fade-in transition-all">
             <CalendarDays size={28} className="text-slate-950" />
@@ -53,4 +55,4 @@ const QuickCards = ({ mudarModulo, user }) => { // Componente que desenha os bot
   );
 };
 
-export default QuickCards; // Exporta os botões para o Maestro (App.jsx) usar.
+export default QuickCards; // Exporta os botões para o Maestro (App.jsx) que agora registra quem clicou em quê.

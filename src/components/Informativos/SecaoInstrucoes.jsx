@@ -1,15 +1,27 @@
-import React from 'react'; // Ferramenta base do React para criar os elementos visuais da tela.
+// src/components/Informativos/SecaoInstrucoes.jsx // Identifica o arquivo que cuida dos textos de orientações.
+
+import React, { useEffect } from 'react'; // Ferramenta base do React para criar a tela e disparar ações automáticas.
 import { Plus, Edit3, Trash2 } from 'lucide-react'; // Importa os ícones de Adicionar, Editar e Excluir.
 import { doc, deleteDoc } from 'firebase/firestore'; // Ferramentas para localizar e apagar documentos no banco de dados.
 import { db } from '../../firebaseConfig'; // Importa a conexão oficial com o banco de dados da Regional.
 
+// IMPORTAÇÃO DE TELEMETRIA
+import { registrarEvento } from '../../constants/comuns'; // Importa o "Olheiro" que grava as ações no Dashboard.
+
 // Este componente cuida exclusivamente da lista de orientações e circulares numeradas.
-const SecaoInstrucoes = ({ instrucoes, masterLogado, setEditando, setFormAviso, setMostraAdd }) => { 
+const SecaoInstrucoes = ({ instrucoes, masterLogado, setEditando, setFormAviso, setMostraAdd, userData }) => { 
   
+  // LOGICA DE TELEMETRIA: Dispara um aviso ao Dashboard assim que o irmão entra nesta seção.
+  useEffect(() => { // Inicia uma ação automática ao abrir a tela.
+    if (instrucoes.length > 0) { // Se existirem instruções para serem lidas...
+      registrarEvento('Informativos', 'Leitura de Instruções', `Total: ${instrucoes.length} itens`, userData); // Grava o acesso identificado.
+    }
+  }, [instrucoes.length, userData]); // Só repete se a quantidade de avisos mudar ou o usuário trocar.
+
   // Função para apagar um aviso (apenas para o Master).
-  const apagarAviso = async (id) => {
+  const apagarAviso = async (id) => { // Inicia o processo de exclusão.
     if (!window.confirm("Deseja realmente excluir esta instrução?")) return; // Pergunta antes de apagar por segurança.
-    try {
+    try { // Tenta realizar a exclusão no Google.
       await deleteDoc(doc(db, "avisos", id)); // Remove o aviso definitivamente do banco de dados.
     } catch (err) { console.error("Erro ao apagar:", err); } // Registra no console se houver falha técnica.
   };

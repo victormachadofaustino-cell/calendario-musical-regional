@@ -1,10 +1,11 @@
-// src/components/ListaOficial.jsx
+// src/components/ListaOficial.jsx // Identifica que este é o arquivo do botão da Lista Oficial.
 import React, { useState, useEffect } from 'react'; // Ferramenta base do React para criar elementos visuais e gerenciar a memória do app.
 import { db } from '../firebaseConfig'; // Conecta com a central de dados do Firebase que configuramos na pasta raiz.
 import { doc, onSnapshot } from 'firebase/firestore'; // Ferramentas do banco para localizar um documento específico e ouvi-lo em tempo real.
 import { FileText, Download, ExternalLink, AlertCircle, Loader2 } from 'lucide-react'; // Biblioteca de ícones para desenhar o botão e o símbolo de carregamento.
+import { registrarEvento } from '../constants/comuns'; // Importa o "Olheiro" para registrar quando alguém abre o documento.
 
-const ListaOficial = () => { // Início do componente que desenha o botão da Lista de Batismos.
+const ListaOficial = ({ userData }) => { // Início do componente, agora preparado para saber quem está clicando (userData).
   const [config, setConfig] = useState(null); // Variável de memória que guardará o link e a data vindos do banco de dados.
   const [carregando, setCarregando] = useState(true); // Variável que controla se o ícone de "carregando" deve aparecer na tela.
 
@@ -26,6 +27,13 @@ const ListaOficial = () => { // Início do componente que desenha o botão da Li
     return () => unsub(); // Quando o músico fecha o app, desliga a vigilância para economizar bateria e internet.
   }, []); 
 
+  // Função disparada ao tocar no botão para abrir o arquivo e avisar o sistema de telemetria.
+  const acaoAbrirDocumento = () => { // Lógica de clique.
+    const url = config?.url || "https://drive.google.com"; // Define o endereço do arquivo.
+    registrarEvento('Documentos', 'Abrir PDF', 'Lista Oficial', userData); // Registra no Dashboard que este documento foi aberto.
+    window.open(url, '_blank'); // Abre o PDF oficial em uma nova aba do navegador.
+  };
+
   // Se o sistema ainda estiver buscando a "partitura" no banco, mostra um aviso de carregamento elegante.
   if (carregando) {
     return (
@@ -36,15 +44,14 @@ const ListaOficial = () => { // Início do componente que desenha o botão da Li
     );
   }
 
-  // Define qual link final e qual data aparecerão no botão após o carregamento.
-  const URL_FINAL = config?.url || "#";
+  // Define qual data aparecerá no botão após o carregamento dos dados do banco.
   const DATA_FINAL = config?.atualizacao || "N/A";
 
   return ( // Início da parte visual que o músico verá no celular.
     <div className="px-6 w-full">
       {/* Botão com design oficial: fundo preto, bordas muito arredondadas e efeito de clique (active:scale-95). */}
       <button 
-        onClick={() => window.open(URL_FINAL, '_blank')} // Abre o link do Google Drive em uma nova aba do navegador ao tocar.
+        onClick={acaoAbrirDocumento} // Agora chama a função que abre o arquivo e também registra o acesso.
         className="w-full bg-slate-950 p-6 rounded-[2.2rem] shadow-xl flex items-center justify-center gap-6 text-white active:scale-95 border border-slate-800"
       >
         {/* Ícone de papel em cor Amarela (Amber) para destacar que é um documento oficial. */}

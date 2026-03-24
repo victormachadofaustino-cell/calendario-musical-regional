@@ -1,12 +1,12 @@
 import React from 'react'; // Ferramenta base para criar o componente visual do cabeçalho.
 import { motion, AnimatePresence } from 'framer-motion'; // Biblioteca para fazer os títulos deslizarem suavemente.
-import { ArrowLeft, User, Lock, LogOut, Lightbulb } from 'lucide-react'; // Importa ícones de navegação, perfil, segurança e a Lâmpada de tickets.
+import { ArrowLeft, User, Lock, LogOut, Lightbulb, ShieldCheck } from 'lucide-react'; // Importa ícones de navegação, perfil, segurança e o novo Escudo de privacidade.
 import { signOut } from 'firebase/auth'; // Função oficial para desconectar o usuário com segurança.
 import { auth } from '../firebaseConfig'; // Importa a chave de conexão com o seu banco de dados Firebase.
 import { isMaster } from '../constants/permissions'; // Motor que verifica se o usuário é o Maestro Regional (Master).
 
-// O Header agora coordena o título dinâmico e os botões de acesso rápido ao perfil e aos tickets.
-const Header = ({ modulo, setModulo, user, userData, pendenciasCount, ticketsCount, titulosModulos, setShowLoginModal, setShowPainelMaster }) => { 
+// O Header agora coordena o título dinâmico, os botões de acesso rápido e a nova Central de Privacidade.
+const Header = ({ modulo, setModulo, user, userData, pendenciasCount, ticketsCount, titulosModulos, setShowLoginModal, setShowPainelMaster, setShowPermissoes }) => { 
   
   // 🧠 FUNÇÃO INTELIGENTE DE VOLTAR: Decide se fecha um "capítulo" (card) ou o "livro" (módulo).
   const lidarComVoltar = () => {
@@ -26,7 +26,7 @@ const Header = ({ modulo, setModulo, user, userData, pendenciasCount, ticketsCou
 
   return ( // Início da estrutura visual do cabeçalho fixo no topo.
     <header className="sticky top-0 left-0 w-full z-[1000] bg-white pt-4 pb-5 px-6 rounded-b-[2rem] shadow-sm border-b border-slate-200 shrink-0"> 
-      {/* ☝️ EXPLICAÇÃO: 'sticky top-0' mantém o cabeçalho parado no topo mesmo ao rolar a página. */}
+      {/* sticky top-0 mantém o cabeçalho parado no topo mesmo ao rolar a página. */}
       
       <div className="max-w-md mx-auto w-full"> 
         {/* Alinhamento que centraliza o conteúdo para telas de celular */}
@@ -51,14 +51,14 @@ const Header = ({ modulo, setModulo, user, userData, pendenciasCount, ticketsCou
             <span className="text-slate-950 text-[7px] font-black uppercase tracking-[0.4em] mt-1.5 opacity-60">Calendário Musical</span>
           </div>
 
-          {/* LADO DIREITO: Botões de Ação (Tickets, Perfil e Sair) */}
+          {/* LADO DIREITO: Botões de Ação (Tickets, Privacidade, Perfil e Sair) */}
           <div className="flex items-center gap-1.5">
             
             {/* BOTÃO VOLTAR: Agora usa a inteligência de 'lidarComVoltar' para não travar no menu de cards */}
             {modulo !== 'hub' && (
               <button 
                 onClick={lidarComVoltar} 
-                className="bg-slate-950 p-2.5 rounded-xl text-white active:scale-90 transition-all shadow-md"
+                className="bg-slate-950 p-2.5 rounded-xl text-white active:scale-90 transition-all shadow-md mr-1"
               >
                 <ArrowLeft size={16} />
               </button>
@@ -82,6 +82,15 @@ const Header = ({ modulo, setModulo, user, userData, pendenciasCount, ticketsCou
                 )}
               </div>
             )}
+
+            {/* 🛡️ NOVO: BOTÃO DE PRIVACIDADE (CENTRAL DE PERMISSÕES) */}
+            <button 
+              onClick={() => setShowPermissoes(true)} 
+              className="p-2.5 bg-slate-50 text-slate-400 rounded-xl border border-slate-100 active:scale-90 transition-all shadow-sm"
+              title="Privacidade e Permissões"
+            >
+              <ShieldCheck size={16} />
+            </button>
             
             {/* BOTÃO DE PERFIL: Abre Login ou Gestão Master */}
             <div className="relative">

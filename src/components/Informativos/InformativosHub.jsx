@@ -1,44 +1,44 @@
 import React, { useState, useRef, useEffect } from 'react'; // Ferramenta base do React para gerenciar memória e referências de toque do dedo.
-import { db } from '../../firebaseConfig'; // Conexão oficial com o banco de dados da Regional no Firebase, subindo dois níveis de pasta.
+import { db } from '../../firebaseConfig'; // Conexão oficial com o banco de dados da Regional no Firebase.
 import { collection, query, orderBy, onSnapshot, doc, deleteDoc, addDoc, updateDoc } from 'firebase/firestore'; // Ferramentas do banco para ler, criar, editar e apagar dados.
-import { Loader2, BookOpen, Clock, Plus, Trash2, Edit3, X, Send, BookText, LayoutDashboard, MapPinCheck, History, Music2, ArrowLeft, ChevronRight, Lock } from 'lucide-react'; // Ícones para os cards de menu, botões e travas de segurança.
+import { Loader2, BookOpen, Clock, Plus, Trash2, Edit3, X, Send, BookText, LayoutDashboard, MapPinCheck, History, Music2, ArrowLeft, ChevronRight, Lock } from 'lucide-react'; // Ícones para os cards de menu e botões.
 import { createPortal } from 'react-dom'; // Ferramenta que desenha as janelas de edição por cima de todo o app (Modais).
-import { motion, AnimatePresence } from 'framer-motion'; // Biblioteca que faz os cards deslizarem suavemente como páginas de um livro.
-import Feedback from '../Feedback'; // Componente de avisos de sucesso ou erro localizado na pasta pai.
+import { motion, AnimatePresence } from 'framer-motion'; // Biblioteca que faz os cards deslizarem suavemente.
+import Feedback from '../Feedback'; // Componente de avisos de sucesso ou erro.
 
-// IMPORTAÇÃO DOS SUB-COMPONENTES (OS INSTRUMENTOS QUE VOCÊ SEPAROU)
-import SecaoInstrucoes from './SecaoInstrucoes'; // Importa o arquivo que cuida dos textos numerados.
-import SecaoDiagrama from './SecaoDiagrama'; // Importa o arquivo que desenha o mapa da orquestra.
-import SecaoTabelaPermissoes from './SecaoTabelaPermissoes'; // Importa o arquivo da tabela técnica.
-import SecaoProgramaMinimo from './SecaoProgramaMinimo'; // Importa o novo modal de escolha de métodos para músicos e organistas.
+// IMPORTAÇÃO DOS SUB-COMPONENTES
+import SecaoInstrucoes from './SecaoInstrucoes'; // Instrumento que cuida dos textos numerados.
+import SecaoDiagrama from './SecaoDiagrama'; // Instrumento que desenha o mapa da orquestra.
+import SecaoTabelaPermissoes from './SecaoTabelaPermissoes'; // Instrumento da tabela técnica.
+import SecaoProgramaMinimo from './SecaoProgramaMinimo'; // Modal de escolha de métodos.
 
-// Importação das Novas Regras de Permissões
-import { isMaster } from '../../constants/permissions'; // Importa a regra que identifica se o usuário logado tem poder de Mestre.
+// Importação de Permissões e Telemetria
+import { isMaster } from '../../constants/permissions'; // Identifica se o usuário logado é Mestre.
+import { registrarEvento } from '../../constants/comuns'; // O Olheiro que grava os passos da irmandade no Dashboard.
 
-const InformativosHub = ({ user }) => { // Início do componente de informativos, recebendo os dados do músico logado.
-  const [avisos, setAvisos] = useState([]); // Lista que guarda todos os textos de avisos vindos do banco de dados.
-  const [linhasTabela, setLinhasTabela] = useState([]); // Lista que guarda as linhas da tabela de permissões musicais.
-  const [loading, setLoading] = useState(true); // Controla a tela de "Carregando" enquanto as informações viajam do banco para o celular.
-  const [feedback, setFeedback] = useState(null); // Controla a mensagem de confirmação colorida após salvar ou deletar algo.
-  const [editando, setEditando] = useState(null); // Guarda qual aviso específico está sendo alterado no momento pelo Master.
-  const [editandoLinha, setEditandoLinha] = useState(null); // Guarda qual linha da tabela está sendo alterada no momento.
-  const [mostraAdd, setMostraAdd] = useState(false); // Controla se a janelinha flutuante de "Novo/Editar" deve aparecer.
-  const [enviando, setEnviando] = useState(false); // Trava o botão de salvar para evitar que cliques repetidos enviem dados duplicados.
-  const [subSecao, setSubSecao] = useState('hub'); // Controla se estamos no menu de cards ('hub') ou dentro de um informativo específico.
-  const [showProgramaMinimo, setShowProgramaMinimo] = useState(false); // Controle específico para abrir e fechar a janelinha do Programa Mínimo.
+const InformativosHub = ({ user }) => { // Início do componente de informativos.
+  const [avisos, setAvisos] = useState([]); // Lista de avisos vindos do banco.
+  const [linhasTabela, setLinhasTabela] = useState([]); // Linhas da tabela técnica.
+  const [loading, setLoading] = useState(true); // Controla a tela de espera.
+  const [feedback, setFeedback] = useState(null); // Mensagem de confirmação.
+  const [editando, setEditando] = useState(null); // Aviso sendo alterado.
+  const [editandoLinha, setEditandoLinha] = useState(null); // Linha da tabela sendo alterada.
+  const [mostraAdd, setMostraAdd] = useState(false); // Janela de "Novo/Editar".
+  const [enviando, setEnviando] = useState(false); // Trava de segurança do botão salvar.
+  const [subSecao, setSubSecao] = useState('hub'); // Controla se está no menu ou em um informativo.
+  const [showProgramaMinimo, setShowProgramaMinimo] = useState(false); // Abre o Programa Mínimo.
 
-  const touchStartX = useRef(null); // Referência para guardar onde o dedo tocou na tela para o gesto circular.
-  const touchEndX = useRef(null); // Referência para guardar onde o dedo saiu da tela.
+  const touchStartX = useRef(null); // Início do deslize do dedo.
+  const touchEndX = useRef(null); // Fim do deslize do dedo.
 
-  // 🔄 FILA DE NAVEGAÇÃO INTERNA: Define os capítulos que permitem deslizar o dedo para os lados.
-  const ORDEM_SUBSECOES = ['instrucoes', 'diagrama', 'tabela']; 
+  const ORDEM_SUBSECOES = ['instrucoes', 'diagrama', 'tabela']; // Ordem para deslizar lateralmente.
 
-  const masterLogado = isMaster(user); // Usa o motor de regras para confirmar se quem está acessando é o administrador.
-  const [formAviso, setFormAviso] = useState({ titulo: '', conteudo: '', ordem: 1, prioridade: 'normal', categoria: 'Instrução', tituloSecundario: '', cordas: '', madeiras: '', metais: '' }); // Campos do formulário de avisos.
-  const [formLinha, setFormLinha] = useState({ s: '', o: true, n: true, rb: true, rnb: true, me: true }); // Campos do formulário da tabela.
+  const masterLogado = isMaster(user); // Confirma se é administrador.
+  const [formAviso, setFormAviso] = useState({ titulo: '', conteudo: '', ordem: 1, prioridade: 'normal', categoria: 'Instrução', tituloSecundario: '', cordas: '', madeiras: '', metais: '' });
+  const [formLinha, setFormLinha] = useState({ s: '', o: true, n: true, rb: true, rnb: true, me: true });
 
-  // 1. SINCRONIA INTELIGENTE COM O BOTÃO VOLTAR (CASCATA)
-  useEffect(() => { // Gerencia o comportamento do botão "voltar" do celular Android/iPhone.
+  // 1. SINCRONIA COM O BOTÃO VOLTAR
+  useEffect(() => { 
     if (subSecao !== 'hub') { 
       window.history.pushState({ subSecao }, ""); 
       const tratarBotaoVoltar = () => { setSubSecao('hub'); };
@@ -49,10 +49,9 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
     }
   }, [subSecao]); 
 
-  // 🧠 INTELIGÊNCIA DE NAVEGAÇÃO CIRCULAR (DEDO): Gerencia a troca de cards por deslize.
+  // 2. NAVEGAÇÃO POR DESLISE (DEDO)
   const aoFinalizarToqueInterno = () => { 
     if (!touchStartX.current || !touchEndX.current || subSecao === 'hub') return; 
-
     const distanciaX = touchStartX.current - touchEndX.current; 
     const indexAtual = ORDEM_SUBSECOES.indexOf(subSecao); 
 
@@ -68,7 +67,8 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
     touchStartX.current = null; touchEndX.current = null; 
   };
 
-  useEffect(() => { // Busca as informações no banco de dados assim que a tela abre.
+  // 3. BUSCA DE DADOS EM TEMPO REAL
+  useEffect(() => { 
     const unsubAvisos = onSnapshot(query(collection(db, "avisos"), orderBy("ordem", "asc")), (snap) => { 
       setAvisos(snap.docs.map(d => ({ id: d.id, ...d.data() }))); 
       setLoading(false); 
@@ -79,7 +79,8 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
     return () => { unsubAvisos(); unsubTabela(); }; 
   }, []); 
 
-  const handleSalvarAviso = async (e) => { // Função para o Mestre salvar um novo aviso.
+  // 4. FUNÇÃO SALVAR AVISO (MASTER)
+  const handleSalvarAviso = async (e) => {
     e.preventDefault(); 
     setEnviando(true); 
     try {
@@ -91,7 +92,8 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
     finally { setEnviando(false); } 
   };
 
-  const handleSalvarLinha = async (e) => { // Função para o Mestre salvar a tabela técnica.
+  // 5. FUNÇÃO SALVAR LINHA TABELA (MASTER)
+  const handleSalvarLinha = async (e) => {
     e.preventDefault(); 
     setEnviando(true); 
     try {
@@ -110,13 +112,13 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
   const instrucoes = avisos.filter(a => a.categoria === 'Instrução'); 
   const diagramaMeta = avisos.find(a => a.categoria === 'Diagrama'); 
 
-  // 🎹 DEFINIÇÃO DOS BOTÕES ATUALIZADA: Liberados os cadeados do histórico e programa mínimo.
+  // DEFINIÇÃO DOS CARDS COM REGISTRO DE TELEMETRIA
   const CARDS_INFORMATIVOS = [ 
-    { id: 'instrucoes', titulo: 'Instruções', desc: 'Orientações e circulares da regional', icone: <BookText size={20}/>, cor: 'bg-blue-600', bloqueado: false, linkExterno: null }, 
-    { id: 'diagrama', titulo: 'Diagrama', desc: 'Posicionamento oficial da orquestra', icone: <LayoutDashboard size={20}/>, cor: 'bg-amber-500', bloqueado: false, linkExterno: null }, 
-    { id: 'tabela', titulo: 'Onde Poderei Tocar', desc: 'Permissões por classificação de serviço', icone: <MapPinCheck size={20}/>, cor: 'bg-emerald-600', bloqueado: false, linkExterno: null }, 
-    { id: 'historico', titulo: 'Histórico Musical', desc: 'Clique para abrir o arquivo oficial', icone: <History size={20}/>, cor: 'bg-slate-700', bloqueado: false, linkExterno: "https://drive.google.com/file/d/1w94EOUALaisb_MdUV6H7jqbI7MKSncKZ/view" }, 
-    { id: 'programa', titulo: 'Programa Mínimo', desc: 'Métodos para músicos e organistas', icone: <Music2 size={20}/>, cor: 'bg-purple-600', bloqueado: false, linkExterno: null }, 
+    { id: 'instrucoes', titulo: 'Instruções', desc: 'Orientações e circulares da regional', icone: <BookText size={20}/>, cor: 'bg-blue-600' }, 
+    { id: 'diagrama', titulo: 'Diagrama', desc: 'Posicionamento oficial da orquestra', icone: <LayoutDashboard size={20}/>, cor: 'bg-amber-500' }, 
+    { id: 'tabela', titulo: 'Onde Poderei Tocar', desc: 'Permissões por classificação de serviço', icone: <MapPinCheck size={20}/>, cor: 'bg-emerald-600' }, 
+    { id: 'historico', titulo: 'Histórico Musical', desc: 'Clique para abrir o arquivo oficial', icone: <History size={20}/>, cor: 'bg-slate-700', linkExterno: "https://drive.google.com/file/d/1w94EOUALaisb_MdUV6H7jqbI7MKSncKZ/view" }, 
+    { id: 'programa', titulo: 'Programa Mínimo', desc: 'Métodos para músicos e organistas', icone: <Music2 size={20}/>, cor: 'bg-purple-600' }, 
   ];
 
   return ( 
@@ -127,7 +129,7 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
       
       {feedback && <Feedback mensagem={feedback.msg} tipo={feedback.tipo} aoFechar={() => setFeedback(null)} />}
 
-      {/* 🟢 VISÃO 1: HUB DE INFORMATIVOS (MENU DE 5 CARDS) */}
+      {/* 🟢 VISÃO 1: HUB DE INFORMATIVOS (MENU) */}
       {subSecao === 'hub' && ( 
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
           <div className="relative">
@@ -147,32 +149,28 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
             {CARDS_INFORMATIVOS.map((card) => ( 
               <button 
                 key={card.id} 
-                disabled={card.bloqueado} 
                 onClick={() => {
-                  // LÓGICA INTELIGENTE DE CLIQUE:
-                  if (card.id === 'historico') { window.open(card.linkExterno, '_blank'); } // Atalho direto para o Histórico.
-                  else if (card.id === 'programa') { setShowProgramaMinimo(true); } // Abre a janelinha de escolha do Programa Mínimo.
-                  else { setSubSecao(card.id); } // Entra nas telas internas normais.
+                  // DISPARA O OLHEIRO: Grava qual seção o músico está abrindo.
+                  registrarEvento('Informativos', 'Acesso à Seção', card.titulo, user);
+
+                  if (card.id === 'historico') { window.open(card.linkExterno, '_blank'); } 
+                  else if (card.id === 'programa') { setShowProgramaMinimo(true); } 
+                  else { setSubSecao(card.id); } 
                 }} 
-                className={`bg-white p-5 rounded-[2.2rem] border border-slate-200 flex items-center justify-between group transition-all shadow-sm ${card.bloqueado ? 'opacity-40 grayscale cursor-not-allowed' : 'active:scale-[0.98]'}`}
+                className="bg-white p-5 rounded-[2.2rem] border border-slate-200 flex items-center justify-between group transition-all shadow-sm active:scale-[0.98]"
               >
                 <div className="flex items-center gap-4">
-                  <div className={`${card.cor} p-3.5 rounded-2xl text-white shadow-lg ${!card.bloqueado && 'group-hover:scale-110'} transition-transform`}>
-                    {card.bloqueado ? <Lock size={20}/> : card.icone}
+                  <div className={`${card.cor} p-3.5 rounded-2xl text-white shadow-lg group-hover:scale-110 transition-transform`}>
+                    {card.icone}
                   </div>
                   <div className="flex flex-col text-left">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-[900] uppercase text-slate-950 tracking-tight leading-none">{card.titulo}</span>
-                      {card.bloqueado && <span className="text-[6px] font-black bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full uppercase">Em Breve</span>}
-                    </div>
+                    <span className="text-[11px] font-[900] uppercase text-slate-950 tracking-tight leading-none">{card.titulo}</span>
                     <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest mt-1.5">{card.desc}</span>
                   </div>
                 </div>
-                {!card.bloqueado && (
-                  <div className="bg-slate-50 p-2 rounded-xl text-slate-300 group-hover:text-slate-950 transition-colors">
-                    {card.id === 'historico' || card.id === 'programa' ? <ChevronRight size={18} className="rotate-[-45deg]"/> : <ChevronRight size={18} />}
-                  </div>
-                )}
+                <div className="bg-slate-50 p-2 rounded-xl text-slate-300 group-hover:text-slate-950 transition-colors">
+                  {card.id === 'historico' || card.id === 'programa' ? <ChevronRight size={18} className="rotate-[-45deg]"/> : <ChevronRight size={18} />}
+                </div>
               </button>
             ))}
           </div>
@@ -198,10 +196,8 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
         )}
       </AnimatePresence>
 
-      {/* 🏁 CHAMADA DO MODAL PROGRAMA MÍNIMO: Aparece apenas quando acionado pelo card. */}
       {showProgramaMinimo && <SecaoProgramaMinimo aoFechar={() => setShowProgramaMinimo(false)} />}
 
-      {/* INDICADOR DE PÁGINAS (BOLINHAS) */}
       {subSecao !== 'hub' && ( 
         <div className="flex justify-center gap-2 mt-4 opacity-20">
           {ORDEM_SUBSECOES.map((s, i) => (
@@ -215,7 +211,7 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
         <span className="text-[7px] font-black uppercase tracking-[0.4em] text-center">Regional Jundiaí • Oficial</span>
       </div>
 
-      {/* MODAIS DE EDIÇÃO DO MASTER */}
+      {/* MODAL AJUSTAR TABELA */}
       {editandoLinha && createPortal(
         <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={() => setEditandoLinha(null)}></div>
@@ -236,6 +232,7 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
         </div>, document.body
       )}
 
+      {/* MODAL ADICIONAR/EDITAR AVISO */}
       {mostraAdd && createPortal(
         <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={fecharModal}></div>
@@ -264,4 +261,4 @@ const InformativosHub = ({ user }) => { // Início do componente de informativos
   );
 };
 
-export default InformativosHub; // Exporta o hub centralizado com navegação circular inteligente e transições suaves.
+export default InformativosHub; // Exporta o hub com o "Olheiro" de telemetria integrado em todos os cliques importantes.

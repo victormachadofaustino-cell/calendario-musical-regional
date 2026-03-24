@@ -1,10 +1,22 @@
-import React from 'react'; // Ferramenta base do React para construir a interface.
+// src/components/Informativos/SecaoDiagrama.jsx // Identifica o arquivo que cuida do mapa visual da orquestra.
+
+import React, { useEffect } from 'react'; // Ferramenta base do React para construir a interface e disparar ações automáticas.
 import { Edit3 } from 'lucide-react'; // Importa o ícone de edição (lápis) para o administrador.
 import OrquestraDiagrama from '../OrquestraDiagrama'; // Importa o componente que desenha o mapa dos instrumentos.
 
+// IMPORTAÇÃO DE TELEMETRIA
+import { registrarEvento } from '../../constants/comuns'; // Importa o "Olheiro" que grava as ações no Dashboard.
+
 // Este componente cuida exclusivamente da exibição do Diagrama de Posicionamento da Orquestra.
-const SecaoDiagrama = ({ diagramaMeta, masterLogado, setEditando, setFormAviso, setMostraAdd }) => {
+const SecaoDiagrama = ({ diagramaMeta, masterLogado, setEditando, setFormAviso, setMostraAdd, userData }) => {
   
+  // LOGICA DE TELEMETRIA: Dispara um registro assim que o irmão visualiza o mapa da orquestra.
+  useEffect(() => { // Inicia uma ação automática ao carregar este componente.
+    if (diagramaMeta) { // Se as informações do diagrama estiverem presentes na tela...
+      registrarEvento('Informativos', 'Visualização de Diagrama', 'Mapa Oficial da Regional', userData); // Grava o acesso identificado no banco.
+    }
+  }, [diagramaMeta, userData]); // Só repete se o diagrama mudar ou o usuário for outro.
+
   return ( // Início da parte visual que o músico verá.
     <div className="space-y-4 animate-in slide-in-from-right-4"> 
       {/* 1. TÍTULO DA SEÇÃO */}
