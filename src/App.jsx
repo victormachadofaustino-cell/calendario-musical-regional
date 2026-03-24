@@ -57,9 +57,9 @@ function App() { // Função principal que constrói e organiza toda a orquestra
     'hub': { p1: 'Visão', p2: 'Geral' },
     'locais': { p1: 'Ensaios', p2: 'Locais' },
     'regionais': { p1: 'Ensaios', p2: 'Regionais' },
-    'comissao': { p1: 'Contatos', p2: 'Úteis' },
-    'reunioes': { p1: 'Agenda de', p2: 'Reuniões' },
-    'avisos': { p1: 'Central de', p2: 'Informativos' }, 
+    'comissao': { p1: 'Contatos', p2: "." },
+    'reunioes': { p1: 'Agenda', p2: 'Reuniões' },
+    'avisos': { p1: 'Central', p2: 'Informativos' }, 
     'dashboard': { p1: 'Status', p2: 'Analítico' },
     'tickets': { p1: 'Suporte e', p2: 'Melhorias' } 
   };

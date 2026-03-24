@@ -89,7 +89,7 @@ const HighlightCards = ({ todosEnsaios, ensaiosRegionais, reunioesData = [], aoV
           <div className={`bg-white p-5 rounded-[2rem] border-l-4 ${proximaReuniao.cor || 'border-l-blue-600'} border shadow-sm relative overflow-hidden h-[140px]`}>
             <div className="flex flex-col justify-between h-full">
               <div className="flex flex-col text-left pr-24">
-                <span className="text-blue-600 text-[8px] font-black uppercase tracking-widest leading-none">{proximaReuniao.rotulo}</span>
+                <span className="text-blue-600 text-[12px] font-black uppercase tracking-widest leading-none">{proximaReuniao.rotulo}</span>
                 <h4 className="text-slate-950 font-[900] text-sm uppercase italic leading-tight tracking-tight mt-1">{proximaReuniao.titulo}</h4>
                 <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1 opacity-80 truncate">{proximaReuniao.local}</p>
               </div>

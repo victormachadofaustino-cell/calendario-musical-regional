@@ -48,37 +48,48 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
 
   const ligarTelefone = (numero, localidade) => { // Inicia chamada telefônica.
     if (!numero || numero === "-") return; 
-    // TELEMETRIA IDENTIFICADA: Registra quem ligou e para qual igreja.
-    registrarEvento('Ensaios Locais', 'Clique Telefone', localidade, userData); 
+    registrarEvento('Ensaios Locais', 'Clique Telefone', localidade, userData); // Registra quem ligou para qual igreja.
     const limpo = numero.replace(/\D/g, ""); 
     window.open(`tel:${limpo}`, '_self'); 
   };
 
   const acaoAbrirMapa = (localidade, cidade) => { // Dispara o GPS.
-    // TELEMETRIA IDENTIFICADA: Registra quem quer saber a rota para a igreja.
-    registrarEvento('Ensaios Locais', 'Clique Mapa', `${cidade} - ${localidade}`, userData); 
+    registrarEvento('Ensaios Locais', 'Clique Mapa', `${cidade} - ${localidade}`, userData); // Registra o uso do GPS.
     abrirGoogleMaps(localidade, cidade); 
   };
 
   const acaoCompartilhar = (ensaio) => { // Partilha o ensaio.
-    // TELEMETRIA IDENTIFICADA: Registra quem está convidando outros músicos.
-    registrarEvento('Ensaios Locais', 'Clique Compartilhar', ensaio.localidade, userData); 
+    registrarEvento('Ensaios Locais', 'Clique Compartilhar', ensaio.localidade, userData); // Registra o compartilhamento.
     compartilharEnsaio(ensaio); 
+  };
+
+  // AFINAÇÃO MASTER: Função que traduz o nome da cidade do banco (CAIXA ALTA) para o nome do Dropdown (Padrão)
+  const normalizarCidadeParaDropdown = (cidadeBanco) => { // Faz a ponte entre o banco de dados e o menu visual.
+    if (!cidadeBanco) return "Jundiaí"; // Caso venha vazio, coloca Jundiaí por segurança.
+    const cidadeEncontrada = CIDADES_LISTA.find(c => normalizarTexto(c) === normalizarTexto(cidadeBanco)); // Compara os textos ignorando acentos e maiúsculas.
+    return cidadeEncontrada || "Jundiaí"; // Retorna o nome bonitinho da lista ou o padrão se não achar.
+  };
+
+  const aplicarTituloIr = (nome) => { // Função que garante o "Ir." abreviado antes do nome.
+    if (!nome || nome === "-" || nome === "N/I") return nome; 
+    let nomeLimpo = nome.replace(/^Ir\.\s*/i, "").replace(/^Ira\.\s*/i, "").replace(/^Irmao\s*/i, "").replace(/^Irma\s*/i, "").trim(); 
+    return "Ir. " + nomeLimpo; 
   };
 
   const handleAddEnsaio = async (e) => { // Registra novo ensaio.
     e.preventDefault(); 
     setEnviando(true); 
     try {
+      const dadosComTitulo = { ...novoEnsaio, encarregado: aplicarTituloIr(novoEnsaio.encarregado) };
       if (isMaster(userData)) { 
-        await addDoc(collection(db, "ensaios_locais"), novoEnsaio); 
+        await addDoc(collection(db, "ensaios_locais"), dadosComTitulo); 
         setFeedback({ msg: "Ensaio adicionado com sucesso!", tipo: 'sucesso' }); 
       } else { 
         await addDoc(collection(db, "sugestoes_pendentes"), { 
           tipo: 'local_criacao', 
           cidade: userData?.cidade || novoEnsaio.cidade, 
           localidade: novoEnsaio.localidade, 
-          dadosSugeridos: novoEnsaio, 
+          dadosSugeridos: dadosComTitulo, 
           solicitanteNome: userData?.nome || user?.email || "Secretário Musical", 
           status: 'pendente', 
           dataSolicitacao: new Date() 
@@ -117,7 +128,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
     ev.preventDefault(); 
     setEnviando(true); 
     try {
-      const dadosSaneados = { ...formSugestao }; 
+      const dadosSaneados = { ...formSugestao, encarregado: aplicarTituloIr(formSugestao.encarregado) }; 
       if (isMaster(userData)) { 
         await updateDoc(doc(db, "ensaios_locais", sugestaoAberta.id), dadosSaneados); 
         setFeedback({ msg: "Dados atualizados com sucesso!", tipo: 'sucesso' }); 
@@ -125,7 +136,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
         await addDoc(collection(db, "sugestoes_pendentes"), { 
           ensaioId: sugestaoAberta.id, 
           localidade: sugestaoAberta.localidade, 
-          cidade: userData?.cidade || sugestaoAberta.cidade, 
+          cidade: formSugestao.cidade, 
           tipo: 'local', 
           dadosAntigos: { ...sugestaoAberta }, 
           dadosSugeridos: dadosSaneados, 
@@ -140,7 +151,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
     finally { setEnviando(false); } 
   };
 
-  const ensaiosFiltradosFinal = useMemo(() => { // Filtra a lista por semana, dia e cidade.
+  const ensaiosFiltradosFinal = useMemo(() => { // Filtra a lista principal.
     let filtrados = [...todosEnsaios]; 
     if (semanaSelecionada) filtrados = filtrados.filter(e => e.dia.includes(semanaSelecionada.replace(/\D/g, "") || "Últ")); 
     if (diaSelecionado) filtrados = filtrados.filter(e => e.dia.includes(diaSelecionado)); 
@@ -149,10 +160,8 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
       const b = normalizarTexto(busca); 
       filtrados = filtrados.filter(e => normalizarTexto(e.localidade).includes(b) || (e.encarregado && normalizarTexto(e.encarregado).includes(b))); 
     }
-
     const PESO_SEMANA = { "1ª": 1, "1º": 1, "2ª": 2, "2º": 2, "3ª": 3, "3º": 3, "4ª": 4, "4º": 4, "Últ": 5 }; 
     const PESO_DIA = { "Dom": 0, "Seg": 1, "Ter": 2, "Qua": 3, "Qui": 4, "Sex": 5, "Sáb": 6 }; 
-
     return filtrados.sort((a, b) => { 
       const semA = Object.keys(PESO_SEMANA).find(s => a.dia.includes(s)) || ""; 
       const semB = Object.keys(PESO_SEMANA).find(s => b.dia.includes(s)) || ""; 
@@ -174,13 +183,12 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
       
       {podeVerBotoesDeGestao(userData, userData?.cidade) && ( 
         <div className="px-6 pt-4">
-          <button onClick={() => { setNovoEnsaio(prev => ({...prev, cidade: userData.cidade})); setMostraAdd(true); }} className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 shadow-xl active:scale-95 transition-all">
+          <button onClick={() => { setNovoEnsaio({ cidade: userData.cidade, localidade: '', dia: '', hora: '', encarregado: '', contato: '', observacao: '' }); setMostraAdd(true); }} className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 shadow-xl active:scale-95 transition-all">
             <Plus size={16}/> Novo Ensaio em {isMaster(userData) ? 'Qualquer Cidade' : userData.cidade}
           </button>
         </div>
       )}
 
-      {/* Filtros Superior */}
       <div className="sticky top-0 z-30 bg-[#F1F5F9]/95 backdrop-blur-xl px-6 py-4 space-y-3 border-b border-slate-200">
         <div className="flex gap-2">
           <div className="relative flex-[2]">
@@ -209,7 +217,6 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
         </div>
       </div>
 
-      {/* Listagem */}
       <div className="space-y-4 px-6 pb-32 mt-6">
         {CIDADES_LISTA.filter(c => (filtroCidade === 'Todas' || normalizarTexto(c) === normalizarTexto(filtroCidade))).map(cidade => {
           const ensaios = ensaiosFiltradosFinal.filter(e => normalizarTexto(e.cidade) === normalizarTexto(cidade));
@@ -245,7 +252,14 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
                           <div className="bg-slate-950 text-white text-[9px] font-black px-3 py-3 rounded-xl uppercase shrink-0 shadow-md">{e.dia}</div>
                           <div className="flex gap-1">
                             {podeVerBotoesDeGestao(userData, e.cidade) && (
-                              <button onClick={() => { setSugestaoAberta(e); setFormSugestao({ ...e, cidade: e.cidade }); }} className="bg-amber-100 text-amber-600 p-2.5 rounded-xl active:scale-90 border border-amber-200"><Edit3 size={16}/></button>
+                              // AFINAÇÃO MASTER: Forçamos a cidade a passar pela função de normalização no momento do clique.
+                              <button onClick={() => { 
+                                setSugestaoAberta(e); 
+                                setFormSugestao({ 
+                                  ...e, 
+                                  cidade: normalizarCidadeParaDropdown(e.cidade) 
+                                }); 
+                              }} className="bg-amber-100 text-amber-600 p-2.5 rounded-xl active:scale-90 border border-amber-200"><Edit3 size={16}/></button>
                             )}
                             {podeVerBotoesDeGestao(userData, e.cidade) && (
                               <button onClick={() => setConfirmaExclusao(e)} className="bg-red-100 text-red-600 p-2.5 rounded-xl active:scale-90 border border-red-200 shadow-sm"><Trash2 size={16}/></button>
@@ -277,7 +291,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
         })}
       </div>
 
-      {/* Modais */}
+      {/* Janelas Flutuantes (Modais) */}
       {(sugestaoAberta || mostraAdd) && createPortal(
         <div onClick={() => { setSugestaoAberta(null); setMostraAdd(false); }} className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
           <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left">
@@ -288,6 +302,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
             <form onSubmit={mostraAdd ? handleAddEnsaio : enviarSugestaoOuEdicao} className="space-y-3 mt-6">
               <div className="flex flex-col gap-1">
                 <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Cidade</span>
+                {/* AFINAÇÃO DE UI: O valor agora é injetado com prioridade total do banco para o formulário no momento do clique. */}
                 <select disabled={!isMaster(userData)} value={mostraAdd ? novoEnsaio.cidade : formSugestao.cidade} 
                         onChange={ev => mostraAdd ? setNovoEnsaio({...novoEnsaio, cidade: ev.target.value}) : setFormSugestao({...formSugestao, cidade: ev.target.value})} 
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold outline-none uppercase disabled:opacity-50">
@@ -315,7 +330,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
                 </div>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Encarregado</span>
+                <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Encarregado (Apenas nome)</span>
                 <input type="text" value={mostraAdd ? novoEnsaio.encarregado : formSugestao.encarregado} 
                        onChange={ev => mostraAdd ? setNovoEnsaio({...novoEnsaio, encarregado: ev.target.value}) : setFormSugestao({...formSugestao, encarregado: ev.target.value})} 
                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold uppercase outline-none" />
@@ -357,4 +372,4 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
   );
 };
 
-export default EnsaiosLocais; // Exporta a lista de ensaios locais afinada e com olheiro identificado.
+export default EnsaiosLocais; // Exporta o arquivo afinado.
