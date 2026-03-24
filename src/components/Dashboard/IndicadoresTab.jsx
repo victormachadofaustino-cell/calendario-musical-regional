@@ -14,13 +14,14 @@ import {
 // IMPORTAÇÕES DE CONSTANTES E MOTOR DE PERMISSÕES
 import { normalizarTexto } from '../../constants/comuns'; // Função que remove acentos e padroniza nomes para busca.
 import { CIDADES_LISTA } from '../../constants/cidades'; // Lista oficial de cidades da Regional Jundiaí.
-import { isMaster, temAcessoAoDashboard } from '../../constants/permissions'; // Regras de quem pode acessar esta tela.
+import { isMaster, isComissao, temAcessoAoDashboard } from '../../constants/permissions'; // AFINAÇÃO: Importa as regras de Master e Comissão para o Dashboard.
 
 const IndicadoresTab = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarregados, user }) => { // Início do componente técnico.
   const masterLogado = isMaster(user); // Verifica se o usuário tem nível administrativo total (Secretário Regional).
+  const integranteComissao = isComissao(user); // NOVO: Verifica se o irmão possui o distintivo da Comissão Musical (Estrela).
   
-  // Define se o usuário começa vendo a regional inteira ou apenas sua cidade de cadastro.
-  const [cidadeSelecionada, setCidadeSelecionada] = useState(masterLogado ? 'REGIONAL' : user?.cidade); 
+  // AFINAÇÃO: Se for Master OU Comissão, começa vendo a Regional inteira. Caso contrário, vê apenas sua cidade.
+  const [cidadeSelecionada, setCidadeSelecionada] = useState((masterLogado || integranteComissao) ? 'REGIONAL' : user?.cidade); 
   
   const [detalheModal, setDetalheModal] = useState(null); // Guarda os dados para mostrar quando o usuário clica em uma barra do gráfico.
   const [semanaFiltro, setSemanaFiltro] = useState('Todas'); // Filtro opcional para analisar semanas específicas.
@@ -36,7 +37,7 @@ const IndicadoresTab = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarreg
 
   // --- 1. LISTENERS DE DADOS REAIS (SÓ PARA LIDERANÇA AUTORIZADA) ---
   useEffect(() => { // Lógica que busca dados analíticos extras no banco de dados.
-    if (!temAcessoAoDashboard(user)) return; // Se não for um cargo autorizado, o banco nem é consultado.
+    if (!temAcessoAoDashboard(user)) return; // Se não for um cargo ou membro da comissão autorizado, o banco nem é consultado.
     
     const unsubAlt = onSnapshot( // Ouve o histórico de quem está trabalhando na manutenção do App.
       query(collection(db, "sugestoes_aprovadas_historico"), orderBy("dataProcessamento", "desc"), limit(100)),
@@ -72,14 +73,17 @@ const IndicadoresTab = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarreg
     return MESES.map(mes => {
       const regionaisNoMes = dadosFiltrados.regionais.filter(e => e.mes === mes); // Separa eventos por mês.
       const row = { name: mes.substring(0, 3), total: regionaisNoMes.length }; // Define a base da barra.
-      const cidadesParaLegenda = masterLogado ? CIDADES_LISTA : [user?.cidade]; // Decide quem aparece na legenda.
+      
+      // AFINAÇÃO: Master e Comissão veem todas as cidades na legenda, editores veem só a sua.
+      const cidadesParaLegenda = (masterLogado || integranteComissao) ? CIDADES_LISTA : [user?.cidade]; 
+      
       cidadesParaLegenda.forEach(cidade => {
         const qtd = regionaisNoMes.filter(e => normalizarTexto(e.sede) === normalizarTexto(cidade)).length;
         if (qtd > 0) row[cidade] = qtd; // Soma eventos de cada cidade.
       });
       return row;
     });
-  }, [dadosFiltrados.regionais, masterLogado, user]);
+  }, [dadosFiltrados.regionais, masterLogado, integranteComissao, user]);
 
   const stats = useMemo(() => { // Calcula a % de "Saúde" do App (campos preenchidos vs vazios).
     const escopoRegional = cidadeSelecionada === 'REGIONAL';
@@ -139,12 +143,13 @@ const IndicadoresTab = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarreg
 
   const rankingAtividade = useMemo(() => { // Ranking de contribuição: Quem mais colabora com as correções no App.
     const usuarios = {};
-    const base = masterLogado ? historicoAlteracoes : historicoAlteracoes.filter(h => normalizarTexto(h.cidade) === normalizarTexto(user?.cidade));
+    // AFINAÇÃO: Master e Comissão veem o ranking regional. Editores veem só da cidade.
+    const base = (masterLogado || integranteComissao) ? historicoAlteracoes : historicoAlteracoes.filter(h => normalizarTexto(h.cidade) === normalizarTexto(user?.cidade));
     base.forEach(log => {
       usuarios[log.solicitanteNome] = (usuarios[log.solicitanteNome] || 0) + 1;
     });
     return Object.entries(usuarios).sort((a,b) => b[1] - a[1]).slice(0, 3);
-  }, [historicoAlteracoes, masterLogado, user]);
+  }, [historicoAlteracoes, masterLogado, integranteComissao, user]);
 
   const ChartBarItem = ({ label, valor, max, color }) => ( // Componente visual das barras dos gráficos.
     <div className="space-y-1">
@@ -158,7 +163,7 @@ const IndicadoresTab = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarreg
       
       <div className="flex items-center justify-between bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
         <h2 className="text-[10px] font-black uppercase italic text-slate-950 tracking-tighter">Indicadores: {cidadeSelecionada}</h2>
-        {masterLogado && ( // Seletor de cidades: Exclusivo para o Secretário Regional (Master).
+        {(masterLogado || integranteComissao) && ( // AFINAÇÃO: Seletor de cidades agora liberado para Master e Comissão.
           <select value={cidadeSelecionada} onChange={(e) => setCidadeSelecionada(e.target.value)} className="bg-slate-50 border-none rounded-xl px-3 py-2 text-[10px] font-bold outline-none">
             <option value="REGIONAL">Toda Regional</option>
             {CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}
@@ -187,7 +192,7 @@ const IndicadoresTab = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarreg
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: '900' }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: '900' }} />
                     <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '15px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase' }} />
-                    {indexGraficoRegional === 0 ? <Bar dataKey="total" fill="#3B82F6" radius={[6, 6, 0, 0]} barSize={20} /> : <><Legend verticalAlign="bottom" align="center" iconType="circle" wrapperStyle={{ fontSize: '7px', fontWeight: '900', textTransform: 'uppercase', paddingTop: '20px' }} />{(masterLogado ? CIDADES_LISTA : [user?.cidade]).map((cidade, idx) => (<Bar key={cidade} dataKey={cidade} stackId="a" fill={CORES_PALETA[idx % CORES_PALETA.length]} radius={idx === 0 ? [0,0,0,0] : [4, 4, 0, 0]} />))}</>}
+                    {indexGraficoRegional === 0 ? <Bar dataKey="total" fill="#3B82F6" radius={[6, 6, 0, 0]} barSize={20} /> : <><Legend verticalAlign="bottom" align="center" iconType="circle" wrapperStyle={{ fontSize: '7px', fontWeight: '900', textTransform: 'uppercase', paddingTop: '20px' }} />{(masterLogado || integranteComissao ? CIDADES_LISTA : [user?.cidade]).map((cidade, idx) => (<Bar key={cidade} dataKey={cidade} stackId="a" fill={CORES_PALETA[idx % CORES_PALETA.length]} radius={idx === 0 ? [0,0,0,0] : [4, 4, 0, 0]} />))}</>}
                   </BarChart>
                 </ResponsiveContainer>
             </motion.div>
@@ -201,7 +206,7 @@ const IndicadoresTab = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarreg
       </div>
 
       <div className="bg-white p-8 rounded-[3.5rem] border border-slate-100 space-y-12 shadow-sm">
-        {masterLogado && ( // Só mostra para o Secretário Regional (Master).
+        {(masterLogado || integranteComissao) && ( // AFINAÇÃO: Saúde dos dados agora visível para Master e Comissão.
             <div className="space-y-4">
                 <div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="p-2 bg-amber-500 rounded-xl"><AlertTriangle size={18} className="text-white" /></div><h4 className="text-sm font-black uppercase italic tracking-tighter leading-none">Saúde da Base de Dados</h4></div><button onClick={() => setShowSaudeInfo(!showSaudeInfo)} className={`px-4 py-1.5 rounded-full border transition-all flex items-center gap-2 ${stats.saudeTotal < 100 ? 'border-amber-500 text-amber-600 bg-amber-50' : 'border-emerald-500 text-emerald-600 bg-emerald-50'} text-[9px] font-black active:scale-95`}>{stats.saudeTotal}% OK <Info size={12}/></button></div>
                 <AnimatePresence>{showSaudeInfo && (<motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-[9px] font-bold text-slate-500 uppercase leading-relaxed overflow-hidden">Análise de preenchimento completo de nomes e contatos nos ensaios oficiais.</motion.div>)}</AnimatePresence>
@@ -240,4 +245,4 @@ const IndicadoresTab = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarreg
   );
 };
 
-export default IndicadoresTab; // Exporta esta aba técnica para o Maestro do Dashboard.
+export default IndicadoresTab; // Exporta esta aba técnica com visão privilegiada para a Comissão Musical.

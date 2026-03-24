@@ -1,23 +1,28 @@
-import React, { useState, useEffect } from 'react'; // Importa as ferramentas para gerenciar o que aparece na tela.
-import { Bell, MapPin, ShieldCheck, X, ChevronRight, Info } from 'lucide-react'; // Importa os ícones elegantes da biblioteca.
-import { motion } from 'framer-motion'; // Importa a ferramenta de animações suaves.
+// src/components/CentralPermissoes.jsx // Identifica o arquivo que cuida da privacidade e alertas do músico.
+import React, { useState, useEffect } from 'react'; // Ferramentas para gerenciar o que aparece na tela.
+import { Bell, MapPin, ShieldCheck, X, ChevronRight, Info } from 'lucide-react'; // Ícones elegantes para a interface.
+import { motion } from 'framer-motion'; // Ferramenta para as animações suaves de abrir e fechar.
 
-// Importação de funções do banco de dados e telemetria
-import { solicitarPermissaoNotificacao } from '../firebaseConfig'; 
-import { registrarEvento } from '../constants/comuns'; 
+// IMPORTAÇÕES DE TELEMETRIA E NOTIFICAÇÕES (O MOTOR DO APP)
+import { registrarEvento } from '../constants/comuns'; // Olheiro que grava os passos da irmandade.
+import { useNotifications } from '../hooks/useNotifications'; // Importa o novo motor que cadastra o celular no banco.
 
-const CentralPermissoes = ({ aoFechar, user }) => { 
-  const [statusGPS, setStatusGPS] = useState('prompt'); // Memória para o estado da localização.
-  const [statusPush, setStatusPush] = useState(Notification.permission); // Memória para o estado das notificações.
+const CentralPermissoes = ({ aoFechar, user }) => { // Início do componente, recebendo a função de fechar e os dados do usuário.
+  const [statusGPS, setStatusGPS] = useState('prompt'); // Memória para saber se o GPS está ligado ou desligado.
+  const [statusPush, setStatusPush] = useState(Notification.permission); // Memória para o estado das notificações no navegador.
+  
+  // ACIONA O MOTOR DE NOTIFICAÇÕES: Prepara a ferramenta usando o perfil do irmão logado.
+  const { ativarNotificacoes: motorAtivarPush, loading: processandoPush } = useNotifications(user);
 
-  useEffect(() => { 
-    // Verifica silenciosamente se o navegador já tem as permissões gravadas.
-    navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-      setStatusGPS(result.state);
-    });
+  useEffect(() => { // Verifica silenciosamente se o navegador já tem as permissões gravadas ao abrir a tela.
+    if ("permissions" in navigator) {
+      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+        setStatusGPS(result.state);
+      });
+    }
   }, []); 
 
-  const ativarGPS = () => { 
+  const ativarGPS = () => { // Função que solicita acesso à localização atual.
     if (!("geolocation" in navigator)) {
       alert("Seu aparelho não suporta GPS.");
       return;
@@ -25,24 +30,23 @@ const CentralPermissoes = ({ aoFechar, user }) => {
 
     navigator.geolocation.getCurrentPosition(
       (posicao) => {
-        setStatusGPS('granted');
-        registrarEvento('Permissões', 'GPS Autorizado', `Cidade: ${user?.cidade || 'Visitante'}`, user);
+        setStatusGPS('granted'); // Marca como autorizado na tela.
+        registrarEvento('Permissões', 'GPS Autorizado', `Cidade: ${user?.cidade || 'Visitante'}`, user); // Grava a vitória no Dashboard.
       },
       (erro) => {
-        setStatusGPS('denied');
-        registrarEvento('Permissões', 'GPS Negado', '', user);
+        setStatusGPS('denied'); // Marca como negado.
+        registrarEvento('Permissões', 'GPS Negado', '', user); // Registra a recusa.
         alert("Para usar o GPS, você precisará autorizar nas configurações do seu navegador.");
       }
     );
   }; 
 
-  const ativarNotificacoes = async () => { 
-    const token = await solicitarPermissaoNotificacao(); 
-    if (token) {
-      setStatusPush('granted');
-      registrarEvento('Permissões', 'Push Autorizado', 'Inscrito', user);
-    } else {
-      setStatusPush(Notification.permission);
+  const handleAtivarPush = async () => { // Lógica nova para ligar os alertas e cadastrar o aparelho.
+    const resultado = await motorAtivarPush(); // Chama o motor que gera o Token e salva no Firebase.
+    if (resultado?.sucesso) {
+      setStatusPush('granted'); // Atualiza a bolinha visual para "Ativado".
+    } else if (resultado?.erro === 'negado') {
+      alert("Notificações bloqueadas. Habilite nas configurações do site/navegador.");
     }
   }; 
 
@@ -105,9 +109,10 @@ const CentralPermissoes = ({ aoFechar, user }) => {
               {statusGPS !== 'granted' && <ChevronRight size={14} className="text-slate-300" />}
             </button>
 
-            {/* OPÇÃO 2: NOTIFICAÇÕES */}
+            {/* OPÇÃO 2: NOTIFICAÇÕES (CONECTADO AO MOTOR FCM) */}
             <button 
-              onClick={statusPush === 'granted' ? null : ativarNotificacoes}
+              disabled={processandoPush}
+              onClick={statusPush === 'granted' ? null : handleAtivarPush}
               className={`w-full p-4 rounded-[1.8rem] border transition-all flex items-center justify-between active:scale-95 ${
                 statusPush === 'granted' ? 'bg-amber-50 border-amber-100' : 'bg-white border-slate-200 shadow-sm'
               }`}
@@ -119,11 +124,11 @@ const CentralPermissoes = ({ aoFechar, user }) => {
                 <div className="flex flex-col text-left">
                   <span className="text-[10px] font-black uppercase text-slate-950">Alertas de Ensaios</span>
                   <span className={`text-[8px] font-bold uppercase ${statusPush === 'granted' ? 'text-amber-600' : 'text-slate-400'}`}>
-                    {statusPush === 'granted' ? 'Alertas Ativos' : 'Desativado • Clique aqui'}
+                    {processandoPush ? 'Sincronizando...' : (statusPush === 'granted' ? 'Alertas Ativos' : 'Desativado • Clique aqui')}
                   </span>
                 </div>
               </div>
-              {statusPush !== 'granted' && <ChevronRight size={14} className="text-slate-300" />}
+              {statusPush !== 'granted' && !processandoPush && <ChevronRight size={14} className="text-slate-300" />}
             </button>
 
           </div>
@@ -151,4 +156,4 @@ const CentralPermissoes = ({ aoFechar, user }) => {
   );
 };
 
-export default CentralPermissoes;
+export default CentralPermissoes; // Exportação da central de permissões agora integrada ao sistema de notificações reais.

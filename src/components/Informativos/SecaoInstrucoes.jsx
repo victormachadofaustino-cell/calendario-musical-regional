@@ -1,4 +1,4 @@
-// src/components/Informativos/SecaoInstrucoes.jsx // Identifica o arquivo que cuida dos textos de orientações.
+// src/components/Informativos/SecaoInstrucoes.jsx // Identifica o arquivo que cuida dos textos de orientações e circulares.
 
 import React, { useEffect } from 'react'; // Ferramenta base do React para criar a tela e disparar ações automáticas.
 import { Plus, Edit3, Trash2 } from 'lucide-react'; // Importa os ícones de Adicionar, Editar e Excluir.
@@ -9,73 +9,84 @@ import { db } from '../../firebaseConfig'; // Importa a conexão oficial com o b
 import { registrarEvento } from '../../constants/comuns'; // Importa o "Olheiro" que grava as ações no Dashboard.
 
 // Este componente cuida exclusivamente da lista de orientações e circulares numeradas.
+// AJUSTE: Agora recebe explicitamente o 'userData' para garantir a identificação no Dashboard.
 const SecaoInstrucoes = ({ instrucoes, masterLogado, setEditando, setFormAviso, setMostraAdd, userData }) => { 
   
-  // LOGICA DE TELEMETRIA: Dispara um aviso ao Dashboard assim que o irmão entra nesta seção.
-  useEffect(() => { // Inicia uma ação automática ao abrir a tela.
-    if (instrucoes.length > 0) { // Se existirem instruções para serem lidas...
-      registrarEvento('Informativos', 'Leitura de Instruções', `Total: ${instrucoes.length} itens`, userData); // Grava o acesso identificado.
+  // LOGICA DE TELEMETRIA: Registra que o irmão está consultando as circulares oficiais.
+  useEffect(() => { // Inicia uma ação automática ao abrir esta aba de texto.
+    if (instrucoes && instrucoes.length > 0) { // Só registra se houver conteúdo carregado na tela.
+      // Grava o evento com o nome e cargo do irmão, facilitando a auditoria do Master.
+      registrarEvento('Informativos', 'Leitura de Circulares', `Consultando ${instrucoes.length} itens`, userData); 
     }
-  }, [instrucoes.length, userData]); // Só repete se a quantidade de avisos mudar ou o usuário trocar.
+  }, [instrucoes.length, userData]); // Só repete o registro se a lista mudar ou se outro usuário logar.
 
-  // Função para apagar um aviso (apenas para o Master).
-  const apagarAviso = async (id) => { // Inicia o processo de exclusão.
-    if (!window.confirm("Deseja realmente excluir esta instrução?")) return; // Pergunta antes de apagar por segurança.
-    try { // Tenta realizar a exclusão no Google.
-      await deleteDoc(doc(db, "avisos", id)); // Remove o aviso definitivamente do banco de dados.
-    } catch (err) { console.error("Erro ao apagar:", err); } // Registra no console se houver falha técnica.
+  // Função para apagar um aviso (ferramenta exclusiva do Maestro Master).
+  const apagarAviso = async (id) => { // Inicia o processo de remoção definitiva.
+    if (!window.confirm("Deseja realmente excluir esta instrução? Isso apagará para todos da Regional.")) return; 
+    try { 
+      await deleteDoc(doc(db, "avisos", id)); // Comando que deleta a pasta da instrução no Google Cloud.
+      alert("Instrução removida com sucesso!"); // Feedback simples de conclusão.
+    } catch (err) { console.error("Erro técnico ao apagar:", err); } // Alerta o console em caso de falha de conexão.
   };
 
-  return ( // Início da parte visual das instruções.
+  return ( // Início da montagem visual da lista de textos.
     <div className="space-y-4 animate-in slide-in-from-right-4"> 
-      {/* Cabeçalho da Seção com botão de Adicionar para o Master */}
-      <div className="flex items-center justify-between">
+      
+      {/* Cabeçalho da Seção: Título e Botão de Novo Item */}
+      <div className="flex items-center justify-between px-1">
         <h3 className="text-slate-950 text-[10px] font-black uppercase tracking-[0.3em]">Instruções e Circulares</h3>
-        {masterLogado && ( // Só mostra o botão de "Mais" se for o Maestro logado.
+        {masterLogado && ( // Se for o Master, ele ganha o botão de adicionar nova instrução.
           <button 
-            onClick={() => { setEditando(null); setFormAviso({titulo:'', conteudo:'', ordem: instrucoes.length + 1, prioridade:'normal', categoria:'Instrução'}); setMostraAdd(true); }} 
-            className="bg-slate-950 text-white p-2 rounded-full active:scale-90 shadow-md"
+            onClick={() => { 
+              setEditando(null); // Limpa a memória de edição para criar um novo.
+              setFormAviso({titulo:'', conteudo:'', ordem: instrucoes.length + 1, prioridade:'normal', categoria:'Instrução'}); 
+              setMostraAdd(true); // Abre a janela flutuante de preenchimento.
+            }} 
+            className="bg-slate-950 text-white p-2 rounded-full active:scale-90 shadow-md transition-transform"
           >
             <Plus size={16}/>
           </button>
         )}
       </div>
 
-      {/* Lista de Cards de Instrução */}
+      {/* LISTAGEM DOS CARDS (CIRCULARES) */}
       <div className="space-y-4">
-        {instrucoes.length === 0 ? ( // Se não houver avisos no banco, mostra uma mensagem simples.
-          <p className="text-center py-10 text-[10px] font-bold text-slate-400 uppercase italic">Nenhuma instrução cadastrada.</p>
+        {instrucoes.length === 0 ? ( // Caso o banco de dados esteja vazio ou carregando.
+          <p className="text-center py-12 text-[10px] font-bold text-slate-400 uppercase italic">Nenhuma instrução ativa na Regional.</p>
         ) : (
-          instrucoes.map((aviso) => ( // Percorre a lista de avisos e desenha cada um na tela.
+          instrucoes.map((aviso) => ( // Desenha um card branco para cada circular encontrada.
             <div key={aviso.id} className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex flex-col gap-4 relative overflow-hidden">
-              {/* Barra lateral de prioridade (só aparece se for Alta) */}
-              {aviso.prioridade === 'alta' && <div className="absolute top-0 left-0 w-1 h-full bg-red-500" />}
+              
+              {/* ALERTA VISUAL: Barra vermelha lateral para avisos de Alta Prioridade */}
+              {aviso.prioridade === 'alta' && <div className="absolute top-0 left-0 w-1.5 h-full bg-red-500" />}
               
               <div className="flex gap-4">
-                {/* Número da Ordem em destaque */}
+                {/* O Número da Ordem serve como identificador visual rápido para o músico */}
                 <span className="text-2xl font-[900] italic text-slate-200 leading-none">{aviso.ordem}</span>
                 
-                {/* Título e Texto do Informativo */}
-                <div className="flex flex-col gap-1 pr-16">
-                  <h4 className="text-slate-950 font-[900] text-[11px] uppercase tracking-wider">{aviso.titulo}</h4>
-                  <p className="text-slate-500 text-[11px] font-bold leading-relaxed uppercase whitespace-pre-line">
+                {/* BLOCO DE TEXTO: Título e Conteúdo da Instrução */}
+                <div className="flex flex-col gap-1 pr-12 text-left">
+                  <h4 className="text-slate-950 font-[900] text-[11px] uppercase tracking-wider leading-tight">{aviso.titulo}</h4>
+                  <p className="text-slate-500 text-[11px] font-bold leading-relaxed uppercase whitespace-pre-line mt-1">
                     {aviso.conteudo}
                   </p>
                 </div>
               </div>
 
-              {/* Botões de Gestão (Apenas para o Master) */}
+              {/* BOTÕES DE GESTÃO: Visíveis apenas para quem tem a "caneta" (Master) */}
               {masterLogado && (
                 <div className="absolute top-4 right-4 flex flex-col gap-2">
                   <button 
                     onClick={() => { setEditando(aviso); setFormAviso(aviso); setMostraAdd(true); }} 
-                    className="p-2.5 bg-amber-100 text-amber-600 rounded-xl active:scale-90 transition-all"
+                    className="p-2.5 bg-amber-100 text-amber-600 rounded-xl active:scale-90 shadow-sm border border-amber-200/50"
+                    title="Editar Instrução"
                   >
                     <Edit3 size={16}/>
                   </button>
                   <button 
                     onClick={() => apagarAviso(aviso.id)} 
-                    className="p-2.5 bg-red-100 text-red-600 rounded-xl active:scale-90 transition-all"
+                    className="p-2.5 bg-red-100 text-red-600 rounded-xl active:scale-90 shadow-sm border border-red-200/50"
+                    title="Excluir Instrução"
                   >
                     <Trash2 size={16}/>
                   </button>
@@ -89,4 +100,4 @@ const SecaoInstrucoes = ({ instrucoes, masterLogado, setEditando, setFormAviso, 
   );
 };
 
-export default SecaoInstrucoes; // Exporta esta parte para ser usada dentro do Hub de Informativos.
+export default SecaoInstrucoes; // Libera o componente monitorado para o Hub de Informativos.

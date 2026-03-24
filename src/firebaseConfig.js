@@ -65,3 +65,11 @@ export const solicitarPermissaoNotificacao = async () => { // Inicia o processo 
     return null; // Encerra sem travar o App.
   }
 }; // Fim da lógica do Mensageiro com sensor de diagnóstico.
+
+// RECEPTOR DE MENSAGENS EM TEMPO REAL (VIVA-VOZ)
+if (messaging) { // Se a antena estiver ligada...
+  onMessage(messaging, (payload) => { // Fica ouvindo mensagens que chegam com o App aberto.
+    console.log("Mensagem recebida em tempo real:", payload); // Registra o conteúdo da mensagem no console.
+    // Opcional: Aqui você pode disparar um alerta visual dentro do App no futuro.
+  });
+}

@@ -11,7 +11,7 @@ import { useAuth } from './hooks/useAuth'; // Verifica quem está logado e traz 
 import { useFirestoreData } from './hooks/useFirestoreData'; // Carrega as listas de ensaios e contatos oficiais.
 
 // Importação das Regras de Permissões e Telemetria
-import { isMaster, temAcessoAoDashboard } from './constants/permissions'; // Define quem pode acessar áreas restritas.
+import { isMaster, temAcessoAoDashboard, isComissao } from './constants/permissions'; // Define quem pode acessar áreas restritas.
 import { registrarEvento } from './constants/comuns'; // Olheiro que grava os passos da irmandade no Dashboard.
 
 // Importação dos Componentes da Estrutura Visual
@@ -65,52 +65,59 @@ function App() { // Função principal que constrói e organiza toda a orquestra
   };
 
   useEffect(() => { // Monitora novos chamados de suporte em tempo real apenas para o Master.
-    if (!isMaster(userData)) { setTicketsCount(0); return; }
-    const q = query(collection(db, "feedback_usuarios"), where("status", "==", "pendente"));
-    const unsub = onSnapshot(q, (snap) => setTicketsCount(snap.size));
-    return () => unsub();
-  }, [userData]);
+    if (!isMaster(userData)) { setTicketsCount(0); return; } // Se não for Master, zera o contador por segurança.
+    const q = query(collection(db, "feedback_usuarios"), where("status", "==", "pendente")); // Busca tickets aguardando resposta.
+    const unsub = onSnapshot(q, (snap) => setTicketsCount(snap.size)); // Atualiza o número de notificações no ícone.
+    return () => unsub(); // Limpa o vigia ao fechar o App.
+  }, [userData]); // VIGIA: Só age se os dados do usuário logado mudarem.
 
-  useEffect(() => { // Segurança: Redireciona o usuário para a Home se ele tentar acessar áreas restritas sem login.
-    if (!user) {
-      const paginasRestritas = ['dashboard', 'reunioes', 'tickets'];
-      if (paginasRestritas.includes(modulo) || showPainelMaster) {
-        setModulo('hub');
-        setShowPainelMaster(false);
+  useEffect(() => { // Segurança: Redireciona o usuário para a Home se ele tentar acessar áreas restritas sem as permissões necessárias.
+    if (!user) { // Se não houver login efetuado...
+      const paginasRestritas = ['dashboard', 'reunioes', 'tickets']; // Lista de salas proibidas para visitantes.
+      if (paginasRestritas.includes(modulo) || showPainelMaster) { // Se tentar entrar em uma dessas salas...
+        setModulo('hub'); // É mandado de volta para a entrada.
+        setShowPainelMaster(false); // Fecha o painel administrativo.
+      }
+    } else { // Se o usuário estiver logado, checa permissões de Comissão e Master.
+      // AFINAÇÃO: Permitimos a entrada em 'reunioes' para qualquer logado. A trava agora é só para o Dashboard.
+      const podeAcessarDash = temAcessoAoDashboard(userData); // Verifica se o irmão pode ver estatísticas.
+      if (!podeAcessarDash && modulo === 'dashboard') { // Se tentar entrar no Dash sem permissão...
+        setModulo('hub'); // Volta para a Visão Geral.
       }
     }
-  }, [user, modulo, showPainelMaster]);
+  }, [user, userData, modulo, showPainelMaster]); // VIGIA: Mantive a lista constante para evitar erros de renderização.
 
   const mudarModulo = (novoModulo) => { // Função responsável por trocar de tela e gravar a telemetria.
-    const indexAtual = ORDEM_MODULOS.indexOf(modulo);
-    const indexNovo = ORDEM_MODULOS.indexOf(novoModulo);
-    setDirecao(indexNovo > indexAtual ? 1 : -1); // Define a direção do deslize visual.
-    if (novoModulo !== 'locais') setDiaFiltro(''); // Limpa filtros de data ao trocar de seção.
+    const indexAtual = ORDEM_MODULOS.indexOf(modulo); // Localiza a página atual na fila.
+    const indexNovo = ORDEM_MODULOS.indexOf(novoModulo); // Localiza a nova página.
+    setDirecao(indexNovo > indexAtual ? 1 : -1); // Define a direção do deslize visual (frente ou trás).
+    if (novoModulo !== 'locais') setDiaFiltro(''); // Limpa filtros de data ao trocar de seção para não travar a lista.
     const nomeAmigavel = TITULOS_MODULOS[novoModulo] ? `${TITULOS_MODULOS[novoModulo].p1} ${TITULOS_MODULOS[novoModulo].p2}` : novoModulo;
     registrarEvento('Navegação', 'Acesso ao Módulo', nomeAmigavel, userData); // Grava quem entrou na tela para o Dashboard.
     setModulo(novoModulo); // Efetiva a mudança de tela.
   };
 
   const aoFinalizarToque = () => { // Lógica para trocar de página usando o gesto de arrastar o dedo (Swipe).
-    if (!touchStartX.current || !touchEndX.current) return;
-    const distanciaX = touchStartX.current - touchEndX.current;
-    const indexAtual = ORDEM_MODULOS.indexOf(modulo);
-    if (modulo === 'dashboard') return; // Bloqueia o gesto no Dashboard para não interferir nos gráficos.
-    if (distanciaX > 70 && indexAtual < ORDEM_MODULOS.length - 1) {
+    if (!touchStartX.current || !touchEndX.current) return; // Se não houve movimento completo, ignora.
+    const distanciaX = touchStartX.current - touchEndX.current; // Calcula o tamanho do arrasto.
+    const indexAtual = ORDEM_MODULOS.indexOf(modulo); // Verifica onde estamos.
+    if (modulo === 'dashboard') return; // Bloqueia o gesto no Dashboard para não interferir no movimento dos gráficos.
+    if (distanciaX > 70 && indexAtual < ORDEM_MODULOS.length - 1) { // Gesto para a esquerda (Avançar).
       const proximo = ORDEM_MODULOS[indexAtual + 1];
-      if (proximo === 'reunioes' && !user) return;
-      if (proximo === 'tickets' && !isMaster(userData)) return;
-      mudarModulo(proximo);
-    } else if (distanciaX < -70 && indexAtual > 0) {
-      mudarModulo(ORDEM_MODULOS[indexAtual - 1]);
+      // AFINAÇÃO: Permite que qualquer irmão logado deslize para a agenda de reuniões.
+      if (proximo === 'reunioes' && !user) return; 
+      if (proximo === 'tickets' && !isMaster(userData)) return; // Mantém a trava de suporte apenas para o Master.
+      mudarModulo(proximo); // Muda para a próxima página.
+    } else if (distanciaX < -70 && indexAtual > 0) { // Gesto para a direita (Voltar).
+      mudarModulo(ORDEM_MODULOS[indexAtual - 1]); // Volta uma página.
     }
-    touchStartX.current = null; touchEndX.current = null;
+    touchStartX.current = null; touchEndX.current = null; // Reseta os pontos de toque.
   };
 
   const lidarComEntradaNoApp = async () => { // Função disparada ao clicar no botão de entrada da tela inicial.
     let cidadeDetectada = "Visitante Externo"; // Padrão de segurança caso a localização falhe.
     try {
-      const response = await fetch('https://ipapi.co/json/'); // Tenta identificar a cidade pelo IP do usuário.
+      const response = await fetch('https://ipapi.co/json/'); // Tenta identificar a cidade pelo IP do usuário para telemetria.
       if (response.ok) {
         const data = await response.json();
         if (data?.city) cidadeDetectada = data.city;
@@ -120,13 +127,13 @@ function App() { // Função principal que constrói e organiza toda a orquestra
     registrarEvento('App', 'Entrada', `Acesso vindo de ${cidadeDetectada}`, { ...userData, cidadeDetectada }); // Grava o início da sessão.
   };
 
-  const variacoesPagina = { // Configurações técnicas das animações de entrada e saída das telas.
+  const variacoesPagina = { // Configurações técnicas das animações de entrada e saída das telas usando o Framer Motion.
     initial: (dir) => ({ opacity: 0, x: dir > 0 ? 50 : -50 }),
     animate: { opacity: 1, x: 0 },
     exit: (dir) => ({ opacity: 0, x: dir > 0 ? -50 : 50 }),
   };
 
-  if (showSplash) return <CapaEntrada aoEntrar={lidarComEntradaNoApp} />; // Exibe a capa de entrada antes de tudo.
+  if (showSplash) return <CapaEntrada aoEntrar={lidarComEntradaNoApp} />; // Exibe a capa de entrada antes de carregar o sistema.
 
   return ( // Início da renderização visual do corpo do aplicativo.
     <div className="min-h-screen bg-[#F1F5F9] flex flex-col relative"
@@ -134,7 +141,7 @@ function App() { // Função principal que constrói e organiza toda a orquestra
          onTouchMove={(e) => touchEndX.current = e.targetTouches[0].clientX}
          onTouchEnd={aoFinalizarToque}> 
       
-      <Header // Componente que desenha o topo do aplicativo.
+      <Header // Componente que desenha o topo fixo do aplicativo.
         modulo={modulo} 
         setModulo={mudarModulo} 
         user={user} 
@@ -151,7 +158,7 @@ function App() { // Função principal que constrói e organiza toda a orquestra
       {showPainelMaster && <PainelMaster aoFechar={() => setShowPainelMaster(false)} userLogado={userData} pendenciasCount={pendenciasCount} />}
 
       <AnimatePresence>
-        {showPermissoes && (
+        {showPermissoes && ( // Janela de privacidade e notificações.
           <CentralPermissoes aoFechar={() => setShowPermissoes(false)} user={userData} />
         )}
       </AnimatePresence>
@@ -162,7 +169,7 @@ function App() { // Função principal que constrói e organiza toda a orquestra
             
             {modulo === 'hub' && ( // Conteúdo da TELA INICIAL (HUB).
               <div className="w-full py-2">
-                {user && ( // Exibe boas-vindas se o irmão estiver logado.
+                {user && ( // Exibe card de boas-vindas personalizado se o irmão estiver logado.
                   <div className="px-6 mb-5">
                     <div className="bg-white border border-slate-200 p-5 rounded-[2.2rem] flex items-center justify-between shadow-sm">
                       <div className="flex items-center gap-4 text-left">
@@ -172,27 +179,21 @@ function App() { // Função principal que constrói e organiza toda a orquestra
                           <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest mt-1.5">{userData?.cargo || "Colaborador"}</span>
                         </div>
                       </div>
+                      {/* O botão do Dashboard aparece apenas para quem tem permissão regional. */}
                       {temAcessoAoDashboard(userData) && (
-                        <button onClick={() => mudarModulo('dashboard')} className="p-3 bg-slate-50 text-slate-400 rounded-2xl border border-slate-100"><BarChart3 size={20} /></button>
+                        <button onClick={() => mudarModulo('dashboard')} className="p-3 bg-slate-50 text-slate-400 rounded-2xl border border-slate-100 active:scale-95 transition-all"><BarChart3 size={20} /></button>
                       )}
                     </div>
                   </div>
                 )}
 
-                {/* Cartões de Ensaios de Hoje */}
                 <HighlightCards todosEnsaios={todosEnsaios} ensaiosRegionais={ensaiosRegionaisData} reunioesData={reunioesData} user={userData} aoVerMais={(d) => {setDiaFiltro(d); mudarModulo('locais');}} cidadeUsuario={userData?.cidade} />
-                
-                {/* 🧠 NOTA: O componente de busca foi removido daqui para limpar o visual da Visão Geral. */}
-
-                {/* Grade de Botões de Navegação */}
                 <QuickCards mudarModulo={mudarModulo} user={user} />
-                
-                {/* Botão da Lista Oficial de Batismos */}
                 <div className="px-6 mt-4 w-full"><ListaOficial userData={userData} /></div>
               </div>
             )}
 
-            {/* Renderização condicional das outras páginas do App */}
+            {/* Telas carregadas dinamicamente conforme a navegação */}
             {modulo === 'locais' && <EnsaiosLocais todosEnsaios={todosEnsaios} diaFiltro={diaFiltro} loading={loading} user={user} userData={userData} />}
             {modulo === 'regionais' && <EnsaiosRegionais ensaiosRegionais={ensaiosRegionaisData} loading={loading} user={user} userData={userData} />}
             {modulo === 'comissao' && <Comissao encarregados={encarregadosData} examinadoras={examinadorasData} loading={loading} user={user} userData={userData} />}
@@ -204,11 +205,11 @@ function App() { // Função principal que constrói e organiza toda a orquestra
         </AnimatePresence>
       </main>
 
-      {modulo !== 'tickets' && ( // Exibe o botão da lâmpada de suporte, exceto na tela de gestão de tickets.
+      {modulo !== 'tickets' && ( // Botão de suporte, escondido apenas na tela de tickets.
         <Tickets user={user} userData={userData} moduloAtual={modulo} titulosModulos={TITULOS_MODULOS} />
       )}
     </div>
   );
 }
 
-export default App; // Exporta o regente da aplicação com o visual da Visão Geral restaurado e monitorado.
+export default App; // Exporta o mestre da aplicação com a entrada de reuniões liberada para todos os logados.

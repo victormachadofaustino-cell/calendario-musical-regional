@@ -1,7 +1,8 @@
 import React, { useState } from 'react'; // Ferramenta base do React para gerenciar a memória e o estado da tela.
 import { 
   Shield, Edit3, Lock, ShieldCheck, ShieldAlert, 
-  Search, Filter, Users, UserMinus, ChevronDown, ChevronUp 
+  Search, Filter, Users, UserMinus, ChevronDown, ChevronUp,
+  Star // Importa o ícone da estrela para identificar os membros da Comissão Musical.
 } from 'lucide-react'; // Importa os ícones de segurança, busca, setas e gestão de usuários.
 import { CIDADES_LISTA } from '../../constants/cidades'; // Importa a lista oficial de cidades para o uso exclusivo do Master.
 
@@ -122,13 +123,20 @@ const AbaGerenciarUsuarios = ({
                         key={u.id} 
                         className={`p-5 rounded-[2rem] shadow-sm border transition-all relative overflow-hidden ${!u.ativo ? 'bg-red-50 border-red-200 opacity-60' : 'bg-white border-slate-100'}`}
                       >
-                        {/* SELO MASTER DISCRETO */}
+                        {/* SELO MASTER: Fica no canto superior direito */}
                         {u.nivel === 'master' && (
-                          <div className="absolute top-0 right-0 bg-amber-500 text-white text-[6px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-widest">Master</div>
+                          <div className="absolute top-0 right-0 bg-amber-500 text-white text-[6px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-widest z-10">Master</div>
+                        )}
+
+                        {/* ESTRELA DA COMISSÃO: Fica no canto superior esquerdo para não quebrar o layout interno */}
+                        {u.isComissao && (
+                          <div className="absolute top-0 left-0 bg-blue-600 text-white p-1 rounded-br-lg shadow-md z-10 animate-in fade-in">
+                            <Star size={8} fill="currentColor" />
+                          </div>
                         )}
 
                         <div className="flex justify-between items-start">
-                          <div className="flex flex-col pr-4">
+                          <div className="flex flex-col pr-2 flex-grow"> {/* O flex-grow garante que o texto use o espaço disponível sem empurrar os botões */}
                             <h4 className="text-[12px] font-[900] uppercase text-slate-950 italic leading-tight">
                               {u.nome} {isMe && <span className="text-amber-600 text-[8px] ml-1">(VOCÊ)</span>}
                             </h4>
@@ -136,34 +144,38 @@ const AbaGerenciarUsuarios = ({
                             {!u.ativo && <span className="text-[7px] font-black text-red-500 uppercase mt-1 italic">Acesso Suspenso</span>}
                           </div>
 
-                          {/* MUDANÇA ESTRATÉGICA: BLOCO DE BOTÕES SÓ EXISTE PARA O MASTER GLOBAL */}
+                          {/* BLOCO DE BOTÕES: Agora com largura fixa para evitar quebras de layout */}
                           {isMasterGlobal && !isMe && (
-                            <div className="flex gap-1.5 shrink-0 animate-in slide-in-from-right-2">
+                            <div className="flex gap-1.5 shrink-0 ml-2">
+                              {/* BOTÃO COMISSÃO: Liga/Desliga o distintivo de comissão */}
+                              <button 
+                                onClick={() => gerenciarUsuario(u.id, { isComissao: !u.isComissao })} 
+                                className={`p-2.5 rounded-xl active:scale-90 transition-all ${u.isComissao ? 'bg-blue-600 text-white shadow-blue-100' : 'bg-slate-100 text-slate-400'}`}
+                                title={u.isComissao ? "Remover da Comissão" : "Adicionar à Comissão"}
+                              >
+                                <Star size={14} fill={u.isComissao ? "currentColor" : "none"} />
+                              </button>
+
                               {/* BOTÃO PROMOVER: Transforma Editor em Master */}
                               <button 
                                 onClick={() => gerenciarUsuario(u.id, { nivel: u.nivel === 'master' ? 'editor' : 'master' })} 
-                                className={`p-3 rounded-xl active:scale-90 transition-all ${u.nivel === 'master' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}
+                                className={`p-2.5 rounded-xl active:scale-90 transition-all ${u.nivel === 'master' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}
                               >
                                 <Shield size={14}/>
                               </button>
-                              {/* BOTÃO AJUSTAR: Muda cargo ou cidade do irmão */}
+                              
+                              {/* BOTÃO AJUSTAR: Abre modal para mudar cargo/cidade */}
                               <button 
                                 onClick={() => { setEditandoUser(u); setNovoCargo(u.cargo); setNovaCidade(u.cidade); }} 
-                                className="p-3 bg-slate-50 text-slate-500 rounded-xl active:scale-90 transition-all"
+                                className="p-2.5 bg-slate-50 text-slate-500 rounded-xl active:scale-90 transition-all"
                               >
                                 <Edit3 size={14}/>
                               </button>
-                              {/* BOTÃO RESET: Recuperação de senha */}
-                              <button 
-                                onClick={() => resetarSenhaUsuario(u.email)} 
-                                className="p-3 bg-blue-50 text-blue-600 rounded-xl active:scale-90 transition-all"
-                              >
-                                <Lock size={14}/>
-                              </button>
+                              
                               {/* BOTÃO STATUS: Ativa ou Desativa o acesso definitivo */}
                               <button 
                                 onClick={() => gerenciarUsuario(u.id, { ativo: !u.ativo })} 
-                                className={`p-3 rounded-xl active:scale-90 transition-all ${u.ativo ? 'bg-green-50 text-green-600' : 'bg-red-200 text-red-800'}`}
+                                className={`p-2.5 rounded-xl active:scale-90 transition-all ${u.ativo ? 'bg-green-50 text-green-600' : 'bg-red-200 text-red-800'}`}
                               >
                                 {u.ativo ? <ShieldCheck size={14}/> : <ShieldAlert size={14}/>}
                               </button>
@@ -172,7 +184,7 @@ const AbaGerenciarUsuarios = ({
 
                           {/* SE FOR EDITOR OU O PRÓPRIO CARD, MOSTRA APENAS O CADEADO TRAVADO */}
                           {(!isMasterGlobal || isMe) && (
-                            <div className="p-3 bg-slate-50 text-slate-200 rounded-xl">
+                            <div className="p-3 bg-slate-50 text-slate-200 rounded-xl shrink-0">
                               <Lock size={14}/>
                             </div>
                           )}
@@ -198,4 +210,4 @@ const AbaGerenciarUsuarios = ({
   );
 };
 
-export default AbaGerenciarUsuarios; // Exporta este naipe de visualização pura para os editores e controle para o Master.
+export default AbaGerenciarUsuarios; // Exporta este componente com o layout agora corrigido e à prova de quebras.

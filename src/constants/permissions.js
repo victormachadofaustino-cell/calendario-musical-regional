@@ -43,7 +43,17 @@ export const obterNivelAcesso = (usuario) => { // Função que analisa quem est�
 }; // Fecha a função de análise de nível.
 
 /** // Início do comentário explicativo.
- * 3. Tabela de Permissões por Nível // O que cada porta libera.
+ * 3. Função de Identificação da Comissão Musical // NOVO DISTINTIVO.
+ * Checa se o irmão tem permissão para ver conteúdos administrativos (Reuniões/Dash).
+ */ // Fim do comentário.
+export const isComissao = (usuario) => { // Função que verifica se o usuário tem o fleg de comissão.
+  if (!usuario) return false; // Se não estiver logado, não é da comissão.
+  const nivel = obterNivelAcesso(usuario); // Verifica o nível básico dele.
+  return nivel === 'master' || usuario.isComissao === true; // É da comissão se for Master OU se tiver o fleg "isComissao" no banco.
+}; // Fim da verificação da comissão.
+
+/** // Início do comentário explicativo.
+ * 4. Tabela de Permissões por Nível // O que cada porta libera.
  * Define tecnicamente o que cada tipo de usuário vê na tela.
  */ // Fim do comentário.
 export const REGRAS = { // Objeto que guarda as chaves de cada funcionalidade.
@@ -71,24 +81,23 @@ export const REGRAS = { // Objeto que guarda as chaves de cada funcionalidade.
 }; // Fim da tabela de regras.
 
 /** // Início do comentário explicativo.
- * 4. Acesso à Sala de Estatísticas (Dashboard).
- * Regra: Somente Liderança Regional visualiza os gráficos e métricas.
+ * 5. Acesso à Sala de Estatísticas (Dashboard).
+ * Regra: Somente Liderança Regional ou Membros da Comissão visualizam os gráficos.
  */ // Fim do comentário.
 export const temAcessoAoDashboard = (usuario) => { // Função que decide quem vê a tela de gráficos.
   if (!usuario) return false; // Se não houver login, o acesso é negado.
   
-  const nivel = obterNivelAcesso(usuario); // Identifica se o usuário é Master ou Editor.
-  
-  // Só entra se for Master ou se tiver cargo de Ancião ou Encarregado Regional.
+  // REGRA AMPLIADA: Entra se for Master, Comissão, ou tiver cargos de alta gestão.
   return ( // Início da verificação.
-    nivel === 'master' || // Maestros sempre entram.
+    isMaster(usuario) || // Maestros sempre entram.
+    isComissao(usuario) || // Integrantes da comissão ganham acesso total aos dados.
     usuario.cargo === CARGOS.ANCIAO || // Anciães têm acesso aos dados da região.
     usuario.cargo === CARGOS.ENC_REGIONAL // Encarregados Regionais também visualizam estatísticas.
   ); // Retorna verdadeiro se um dos critérios for atendido.
 }; // Fim da função de acesso ao Dashboard.
 
 /** // Início do comentário explicativo.
- * 5. Validador de Territorialidade // A "Cerca por Cidade".
+ * 6. Validador de Territorialidade // A "Cerca por Cidade".
  * Garante que cada colaborador cuide apenas da sua própria área de atuação.
  */ // Fim do comentário.
 export const podeVerBotoesDeGestao = (usuario, cidadeDoCard) => { // Função que mostra ou esconde botões de edição.
@@ -105,7 +114,7 @@ export const podeVerBotoesDeGestao = (usuario, cidadeDoCard) => { // Função qu
 }; // Fim da regra de territorialidade.
 
 /** // Início do comentário explicativo.
- * 6. Atalhos para o Programador.
+ * 7. Atalhos para o Programador.
  */ // Fim do comentário.
 export const isMaster = (usuario) => obterNivelAcesso(usuario) === 'master'; // Atalho rápido para checar se é o Maestro.
 export const isLogado = (usuario) => !!usuario; // Atalho rápido para saber se o usuário está logado.
