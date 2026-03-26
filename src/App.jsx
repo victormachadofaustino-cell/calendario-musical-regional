@@ -1,5 +1,3 @@
-// src/App.jsx // Arquivo mestre que coordena todas as telas, animações e segurança do sistema.
-
 import React, { useState, useRef, useEffect } from 'react'; // Ferramenta base para gerenciar estados e referências.
 import { auth, db } from './firebaseConfig'; // Configurações de conexão com o banco de dados e login.
 import { collection, query, where, onSnapshot } from 'firebase/firestore'; // Ferramentas para busca de dados em tempo real.
@@ -12,7 +10,7 @@ import { useFirestoreData } from './hooks/useFirestoreData'; // Carrega as lista
 
 // Importação das Regras de Permissões e Telemetria
 import { isMaster, temAcessoAoDashboard, isComissao } from './constants/permissions'; // Define quem pode acessar áreas restritas.
-import { registrarEvento } from './constants/comuns'; // Olheiro que grava os passos da irmandade no Dashboard.
+import { registrarEvento, registrarAcesso } from './constants/comuns'; // Olheiro que grava os passos e a entrada da irmandade.
 
 // Importação dos Componentes da Estrutura Visual
 import Header from './components/Header'; // Cabeçalho fixo com títulos e botões de controle.
@@ -37,23 +35,23 @@ import CentralPermissoes from './components/CentralPermissoes'; // Central de co
 
 function App() { // Função principal que constrói e organiza toda a orquestra do código.
   const [modulo, setModulo] = useState('hub'); // Controla qual página está ativa no momento.
-  const [diaFiltro, setDiaFiltro] = useState(''); // Filtro automático para quando o usuário quer ver ensaios de um dia específico.
-  const [showSplash, setShowSplash] = useState(true); // Decide se exibe a tela de abertura ou o conteúdo do App.
-  const [showLoginModal, setShowLoginModal] = useState(false); // Controla a abertura da janela de login.
-  const [showPainelMaster, setShowPainelMaster] = useState(false); // Controla a visibilidade do painel de aprovações.
-  const [showPermissoes, setShowPermissoes] = useState(false); // Controla se a Central de Privacidade está aberta.
-  const [direcao, setDirecao] = useState(0); // Define para qual lado a tela desliza na animação (esquerda ou direita).
-  const [ticketsCount, setTicketsCount] = useState(0); // Contador de avisos de novos chamados para o Master.
+  const [diaFiltro, setDiaFiltro] = useState(''); // Filtro automático para dias específicos.
+  const [showSplash, setShowSplash] = useState(true); // Decide se exibe a tela de abertura.
+  const [showLoginModal, setShowLoginModal] = useState(false); // Controla a janela de login.
+  const [showPainelMaster, setShowPainelMaster] = useState(false); // Controla o painel do administrador.
+  const [showPermissoes, setShowPermissoes] = useState(false); // Controla a Central de Privacidade.
+  const [direcao, setDirecao] = useState(0); // Define a direção da animação lateral.
+  const [ticketsCount, setTicketsCount] = useState(0); // Contador de novos chamados.
 
-  const { user, userData, pendenciasCount } = useAuth(); // Obtém os dados de login e contagem de pedidos pendentes.
-  const { todosEnsaios, ensaiosRegionaisData, reunioesData, encarregadosData, examinadorasData, loading } = useFirestoreData(); // Sincroniza o banco de dados.
+  const { user, userData, pendenciasCount } = useAuth(); // Obtém dados de login do irmão.
+  const { todosEnsaios, ensaiosRegionaisData, reunioesData, encarregadosData, examinadorasData, loading } = useFirestoreData(); // Sincroniza o banco.
 
-  const touchStartX = useRef(null); // Registra onde o dedo tocou na tela para o gesto de deslizar.
-  const touchEndX = useRef(null); // Registra onde o dedo saiu da tela.
+  const touchStartX = useRef(null); // Registra o início do toque para o gesto Swipe.
+  const touchEndX = useRef(null); // Registra o fim do toque.
 
-  const ORDEM_MODULOS = ['hub', 'locais', 'regionais', 'comissao', 'avisos', 'reunioes', 'tickets']; // Fila de páginas para o movimento lateral.
+  const ORDEM_MODULOS = ['hub', 'locais', 'regionais', 'comissao', 'avisos', 'reunioes', 'tickets']; // Fila para navegação lateral.
 
-  const TITULOS_MODULOS = { // Define os nomes que aparecem no topo do App para cada tela.
+  const TITULOS_MODULOS = { // Títulos que aparecem no topo de cada tela.
     'hub': { p1: 'Visão', p2: 'Geral' },
     'locais': { p1: 'Ensaios', p2: 'Locais' },
     'regionais': { p1: 'Ensaios', p2: 'Regionais' },
@@ -64,84 +62,84 @@ function App() { // Função principal que constrói e organiza toda a orquestra
     'tickets': { p1: 'Suporte e', p2: 'Melhorias' } 
   };
 
-  useEffect(() => { // Monitora novos chamados de suporte em tempo real apenas para o Master.
-    if (!isMaster(userData)) { setTicketsCount(0); return; } // Se não for Master, zera o contador por segurança.
-    const q = query(collection(db, "feedback_usuarios"), where("status", "==", "pendente")); // Busca tickets aguardando resposta.
-    const unsub = onSnapshot(q, (snap) => setTicketsCount(snap.size)); // Atualiza o número de notificações no ícone.
-    return () => unsub(); // Limpa o vigia ao fechar o App.
-  }, [userData]); // VIGIA: Só age se os dados do usuário logado mudarem.
+  useEffect(() => { // Monitora novos chamados exclusivamente para o Master.
+    if (!isMaster(userData)) { setTicketsCount(0); return; } // Segurança: zero para não-Masters.
+    const q = query(collection(db, "feedback_usuarios"), where("status", "==", "pendente")); // Busca tickets abertos.
+    const unsub = onSnapshot(q, (snap) => setTicketsCount(snap.size)); // Atualiza o contador visual.
+    return () => unsub(); // Limpa o sensor ao fechar.
+  }, [userData]); // Age apenas se o perfil do usuário mudar.
 
-  useEffect(() => { // Segurança: Redireciona o usuário para a Home se ele tentar acessar áreas restritas sem as permissões necessárias.
-    if (!user) { // Se não houver login efetuado...
-      const paginasRestritas = ['dashboard', 'reunioes', 'tickets']; // Lista de salas proibidas para visitantes.
-      if (paginasRestritas.includes(modulo) || showPainelMaster) { // Se tentar entrar em uma dessas salas...
-        setModulo('hub'); // É mandado de volta para a entrada.
+  useEffect(() => { // Segurança: Trava áreas restritas para visitantes ou sem cargo.
+    if (!user) { // Se não estiver logado...
+      const paginasRestritas = ['dashboard', 'reunioes', 'tickets']; // Lista de páginas bloqueadas.
+      if (paginasRestritas.includes(modulo) || showPainelMaster) { // Se tentar entrar nelas...
+        setModulo('hub'); // Volta para o início.
         setShowPainelMaster(false); // Fecha o painel administrativo.
       }
-    } else { // Se o usuário estiver logado, checa permissões de Comissão e Master.
-      // AFINAÇÃO: Permitimos a entrada em 'reunioes' para qualquer logado. A trava agora é só para o Dashboard.
-      const podeAcessarDash = temAcessoAoDashboard(userData); // Verifica se o irmão pode ver estatísticas.
-      if (!podeAcessarDash && modulo === 'dashboard') { // Se tentar entrar no Dash sem permissão...
-        setModulo('hub'); // Volta para a Visão Geral.
+    } else { // Se logado, checa permissões de liderança.
+      const podeAcessarDash = temAcessoAoDashboard(userData); // Checa permissão do Dashboard.
+      if (!podeAcessarDash && modulo === 'dashboard') { // Se não puder ver estatísticas...
+        setModulo('hub'); // É redirecionado para a Home.
       }
     }
-  }, [user, userData, modulo, showPainelMaster]); // VIGIA: Mantive a lista constante para evitar erros de renderização.
+  }, [user, userData, modulo, showPainelMaster]); // Vigia constante da segurança de acesso.
 
-  const mudarModulo = (novoModulo) => { // Função responsável por trocar de tela e gravar a telemetria.
-    const indexAtual = ORDEM_MODULOS.indexOf(modulo); // Localiza a página atual na fila.
-    const indexNovo = ORDEM_MODULOS.indexOf(novoModulo); // Localiza a nova página.
-    setDirecao(indexNovo > indexAtual ? 1 : -1); // Define a direção do deslize visual (frente ou trás).
-    if (novoModulo !== 'locais') setDiaFiltro(''); // Limpa filtros de data ao trocar de seção para não travar a lista.
+  const mudarModulo = (novoModulo) => { // Função de troca de tela com registro de cliques.
+    const indexAtual = ORDEM_MODULOS.indexOf(modulo); // Localiza onde estamos na fila.
+    const indexNovo = ORDEM_MODULOS.indexOf(novoModulo); // Localiza para onde vamos.
+    setDirecao(indexNovo > indexAtual ? 1 : -1); // Define o lado da animação.
+    if (novoModulo !== 'locais') setDiaFiltro(''); // Limpa filtros de data ao navegar.
     const nomeAmigavel = TITULOS_MODULOS[novoModulo] ? `${TITULOS_MODULOS[novoModulo].p1} ${TITULOS_MODULOS[novoModulo].p2}` : novoModulo;
-    registrarEvento('Navegação', 'Acesso ao Módulo', nomeAmigavel, userData); // Grava quem entrou na tela para o Dashboard.
-    setModulo(novoModulo); // Efetiva a mudança de tela.
+    registrarEvento('Navegação', 'Acesso ao Módulo', nomeAmigavel, userData); // Grava a navegação interna.
+    setModulo(novoModulo); // Efetiva a troca visual.
   };
 
-  const aoFinalizarToque = () => { // Lógica para trocar de página usando o gesto de arrastar o dedo (Swipe).
-    if (!touchStartX.current || !touchEndX.current) return; // Se não houve movimento completo, ignora.
-    const distanciaX = touchStartX.current - touchEndX.current; // Calcula o tamanho do arrasto.
-    const indexAtual = ORDEM_MODULOS.indexOf(modulo); // Verifica onde estamos.
-    if (modulo === 'dashboard') return; // Bloqueia o gesto no Dashboard para não interferir no movimento dos gráficos.
-    if (distanciaX > 70 && indexAtual < ORDEM_MODULOS.length - 1) { // Gesto para a esquerda (Avançar).
+  const aoFinalizarToque = () => { // Lógica de navegação via deslize de dedo (Swipe).
+    if (!touchStartX.current || !touchEndX.current) return; // Ignora se o toque foi incompleto.
+    const distanciaX = touchStartX.current - touchEndX.current; // Mede o arrasto.
+    const indexAtual = ORDEM_MODULOS.indexOf(modulo); // Checa a página atual.
+    if (modulo === 'dashboard') return; // Bloqueia swipe no Dashboard para não travar os gráficos.
+    if (distanciaX > 70 && indexAtual < ORDEM_MODULOS.length - 1) { // Gesto para avançar.
       const proximo = ORDEM_MODULOS[indexAtual + 1];
-      // AFINAÇÃO: Permite que qualquer irmão logado deslize para a agenda de reuniões.
-      if (proximo === 'reunioes' && !user) return; 
-      if (proximo === 'tickets' && !isMaster(userData)) return; // Mantém a trava de suporte apenas para o Master.
-      mudarModulo(proximo); // Muda para a próxima página.
-    } else if (distanciaX < -70 && indexAtual > 0) { // Gesto para a direita (Voltar).
-      mudarModulo(ORDEM_MODULOS[indexAtual - 1]); // Volta uma página.
+      if (proximo === 'reunioes' && !user) return; // Visitantes não "deslizam" para reuniões.
+      if (proximo === 'tickets' && !isMaster(userData)) return; // Apenas Masters deslizam para suporte.
+      mudarModulo(proximo); // Avança página.
+    } else if (distanciaX < -70 && indexAtual > 0) { // Gesto para voltar.
+      mudarModulo(ORDEM_MODULOS[indexAtual - 1]); // Volta página.
     }
-    touchStartX.current = null; touchEndX.current = null; // Reseta os pontos de toque.
+    touchStartX.current = null; touchEndX.current = null; // Reseta as coordenadas de toque.
   };
 
-  const lidarComEntradaNoApp = async () => { // Função disparada ao clicar no botão de entrada da tela inicial.
-    let cidadeDetectada = "Visitante Externo"; // Padrão de segurança caso a localização falhe.
+  const lidarComEntradaNoApp = async () => { // Função disparada no botão "Toque para Entrar".
+    let cidadeDetectada = "Visitante Externo"; // Padrão caso a localização falhe.
     try {
-      const response = await fetch('https://ipapi.co/json/'); // Tenta identificar a cidade pelo IP do usuário para telemetria.
+      const response = await fetch('https://ipapi.co/json/'); // Identifica a cidade pelo IP.
       if (response.ok) {
         const data = await response.json();
-        if (data?.city) cidadeDetectada = data.city;
+        if (data?.city) cidadeDetectada = data.city; // Salva a cidade encontrada.
       }
     } catch (e) { console.log("Localização via IP indisponível."); }
-    setShowSplash(false); // Fecha a tela de abertura.
-    registrarEvento('App', 'Entrada', `Acesso vindo de ${cidadeDetectada}`, { ...userData, cidadeDetectada }); // Grava o início da sessão.
+    setShowSplash(false); // Fecha a Splash Screen.
+    // AQUI INSTALAMOS O REGISTRO DE ACESSO (O PORTEIRO DO GRÁFICO):
+    registrarAcesso(userData, cidadeDetectada); // Grava a entrada na gaveta telemetria_acessos.
+    registrarEvento('App', 'Entrada', `Sessão iniciada em ${cidadeDetectada}`, { ...userData, cidadeDetectada }); // Log de evento.
   };
 
-  const variacoesPagina = { // Configurações técnicas das animações de entrada e saída das telas usando o Framer Motion.
+  const variacoesPagina = { // Configuração das animações de entrada e saída.
     initial: (dir) => ({ opacity: 0, x: dir > 0 ? 50 : -50 }),
     animate: { opacity: 1, x: 0 },
     exit: (dir) => ({ opacity: 0, x: dir > 0 ? -50 : 50 }),
   };
 
-  if (showSplash) return <CapaEntrada aoEntrar={lidarComEntradaNoApp} />; // Exibe a capa de entrada antes de carregar o sistema.
+  if (showSplash) return <CapaEntrada aoEntrar={lidarComEntradaNoApp} />; // Exibe a capa de entrada primeiro.
 
-  return ( // Início da renderização visual do corpo do aplicativo.
+  return ( // Renderização principal do aplicativo.
     <div className="min-h-screen bg-[#F1F5F9] flex flex-col relative"
          onTouchStart={(e) => touchStartX.current = e.targetTouches[0].clientX}
          onTouchMove={(e) => touchEndX.current = e.targetTouches[0].clientX}
          onTouchEnd={aoFinalizarToque}> 
       
-      <Header // Componente que desenha o topo fixo do aplicativo.
+      <Header // Cabeçalho coordenador do sistema.
         modulo={modulo} 
         setModulo={mudarModulo} 
         user={user} 
@@ -158,7 +156,7 @@ function App() { // Função principal que constrói e organiza toda a orquestra
       {showPainelMaster && <PainelMaster aoFechar={() => setShowPainelMaster(false)} userLogado={userData} pendenciasCount={pendenciasCount} />}
 
       <AnimatePresence>
-        {showPermissoes && ( // Janela de privacidade e notificações.
+        {showPermissoes && ( // Central de Privacidade.
           <CentralPermissoes aoFechar={() => setShowPermissoes(false)} user={userData} />
         )}
       </AnimatePresence>
@@ -167,9 +165,9 @@ function App() { // Função principal que constrói e organiza toda a orquestra
         <AnimatePresence mode="wait" custom={direcao}>
           <motion.div key={modulo} custom={direcao} variants={variacoesPagina} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.3 }} className="w-full h-full pt-2">
             
-            {modulo === 'hub' && ( // Conteúdo da TELA INICIAL (HUB).
+            {modulo === 'hub' && ( // Conteúdo da TELA INICIAL.
               <div className="w-full py-2">
-                {user && ( // Exibe card de boas-vindas personalizado se o irmão estiver logado.
+                {user && ( // Saudação para o irmão logado.
                   <div className="px-6 mb-5">
                     <div className="bg-white border border-slate-200 p-5 rounded-[2.2rem] flex items-center justify-between shadow-sm">
                       <div className="flex items-center gap-4 text-left">
@@ -179,8 +177,7 @@ function App() { // Função principal que constrói e organiza toda a orquestra
                           <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest mt-1.5">{userData?.cargo || "Colaborador"}</span>
                         </div>
                       </div>
-                      {/* O botão do Dashboard aparece apenas para quem tem permissão regional. */}
-                      {temAcessoAoDashboard(userData) && (
+                      {temAcessoAoDashboard(userData) && ( // Botão restrito para liderança regional.
                         <button onClick={() => mudarModulo('dashboard')} className="p-3 bg-slate-50 text-slate-400 rounded-2xl border border-slate-100 active:scale-95 transition-all"><BarChart3 size={20} /></button>
                       )}
                     </div>
@@ -193,7 +190,7 @@ function App() { // Função principal que constrói e organiza toda a orquestra
               </div>
             )}
 
-            {/* Telas carregadas dinamicamente conforme a navegação */}
+            {/* Carregamento dinâmico das telas internas */}
             {modulo === 'locais' && <EnsaiosLocais todosEnsaios={todosEnsaios} diaFiltro={diaFiltro} loading={loading} user={user} userData={userData} />}
             {modulo === 'regionais' && <EnsaiosRegionais ensaiosRegionais={ensaiosRegionaisData} loading={loading} user={user} userData={userData} />}
             {modulo === 'comissao' && <Comissao encarregados={encarregadosData} examinadoras={examinadorasData} loading={loading} user={user} userData={userData} />}
@@ -205,11 +202,11 @@ function App() { // Função principal que constrói e organiza toda a orquestra
         </AnimatePresence>
       </main>
 
-      {modulo !== 'tickets' && ( // Botão de suporte, escondido apenas na tela de tickets.
+      {modulo !== 'tickets' && ( // O ícone de Tickets fica disponível em quase todas as telas.
         <Tickets user={user} userData={userData} moduloAtual={modulo} titulosModulos={TITULOS_MODULOS} />
       )}
     </div>
   );
 }
 
-export default App; // Exporta o mestre da aplicação com a entrada de reuniões liberada para todos os logados.
+export default App; // Exporta o mestre da aplicação com o sensor de audiência instalado.

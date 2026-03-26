@@ -1,194 +1,272 @@
-// src/components/Dashboard/TelemetriaTab.jsx // Localização do arquivo de inteligência de dados total da Regional.
-
-import React, { useState, useEffect, useMemo } from 'react'; // Ferramentas para gerenciar dados e cálculos de gráficos.
+import React, { useState, useEffect, useMemo } from 'react'; // Ferramentas para gerenciar dados e cálculos matemáticos.
 import { db } from '../../firebaseConfig'; // Conexão oficial com o banco de dados da Regional.
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore'; // Ferramentas para ouvir os cliques em tempo real.
+import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore'; // Ferramentas para ouvir os registros em tempo real.
 import { 
-  Activity, MousePointer2, MapPin, Trophy, Phone, Share2, LineChart as LineIcon, UserCheck, Shield, Search, BookOpen
-} from 'lucide-react'; // Ícones para comportamento, segurança e categorias de uso.
-import { motion } from 'framer-motion'; // Biblioteca para animações suaves ao abrir o painel.
+  Activity, Users, Calendar, Shield, ChevronLeft, ChevronRight, BarChart3, Trophy, MapPin, 
+  Music, Phone, Info, BookOpen, LayoutGrid
+} from 'lucide-react'; // Ícones para indicar tempo, pessoas, estatísticas e localização.
+import { motion, AnimatePresence } from 'framer-motion'; // Biblioteca para fazer a troca dos gráficos de forma suave.
 import { 
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid 
-} from 'recharts'; // Ferramentas para desenhar os gráficos com eixos visíveis e precisos.
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, Cell, LabelList, Legend 
+} from 'recharts'; // Ferramentas para desenhar os gráficos de linha, barras e rankings territoriais.
 
-// IMPORTAÇÕES DE UTILITÁRIOS
-import { CIDADES_LISTA } from '../../constants/cidades'; // Lista oficial de cidades para o ranking territorial.
-
-const TelemetriaTab = ({ user }) => { // Início do componente de audiência total, recebendo o usuário logado.
-  const [telemetria, setTelemetria] = useState([]); // Memória que guarda os últimos 1000 registros para análise profunda.
+const TelemetriaTab = ({ user }) => { // Início do componente de inteligência da Regional.
+  const [telemetria, setTelemetria] = useState([]); // Memória que guarda os registros de acesso (entradas no app).
+  const [interacoes, setInteracoes] = useState([]); // Memória para os registros de cliques em botões e mapas.
   const [loading, setLoading] = useState(true); // Controla o aviso de "Carregando" na tela.
+  const [slideAtivo, setSlideAtivo] = useState(0); // Controle do carrossel de Audiência (Superior).
+  const [slideOrigemAtivo, setSlideOrigemAtivo] = useState(0); // Controle do carrossel de Origem (Geográfico).
+  const [slidePopAtivo, setSlidePopAtivo] = useState(0); // Controle do carrossel de Popularidade (0 a 5 - Total de 6 módulos).
 
-  useEffect(() => { // Lógica que liga os sensores de escuta do Google Firebase.
-    const q = query(
-      collection(db, "telemetria_interacoes"), 
-      orderBy("data", "desc"), 
-      limit(1000)
-    ); // Busca os últimos 1000 registros para garantir uma análise real.
+  const MESES_NOMES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]; // Nomes curtos dos meses.
+  const CORES_PALETA = ["#0f172a", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#ef4444", "#64748b"]; // Cores para distinguir as cidades.
 
-    const unsub = onSnapshot(q, (snap) => { // Ouve o banco em tempo real para o gráfico atualizar sozinho.
-      setTelemetria(snap.docs.map(d => ({ id: d.id, ...d.data() }))); // Converte os dados do Google para o App.
-      setLoading(false); // Libera a visualização após os dados chegarem.
+  useEffect(() => { // Sensor que monitora a abertura do aplicativo e os cliques simultaneamente.
+    const qAcessos = query(collection(db, "telemetria_acessos"), orderBy("data", "desc"), limit(1000)); // Busca as últimas 1.000 entradas.
+    const qInteracoes = query(collection(db, "telemetria_interacoes"), orderBy("data", "desc"), limit(1000)); // Busca os últimos 1.000 cliques.
+
+    const unsubAcessos = onSnapshot(qAcessos, (snap) => { // Ouve entradas no app em tempo real.
+      setTelemetria(snap.docs.map(d => ({ id: d.id, ...d.data() }))); // Salva na lista de audiência.
     });
 
-    return () => unsub(); // Desliga o radar ao sair da aba para economizar internet do Master.
+    const unsubInteracoes = onSnapshot(qInteracoes, (snap) => { // Ouve cliques em botões em tempo real.
+      setInteracoes(snap.docs.map(d => ({ id: d.id, ...d.data() }))); // Salva na lista de interações.
+      setLoading(false); // Libera a visão após carregar os dados.
+    });
+
+    return () => { unsubAcessos(); unsubInteracoes(); }; // Desliga os sensores ao sair.
   }, []); 
 
-  // --- PROCESSAMENTO DE DADOS REAIS ---
+  // --- LÓGICA DE FILTRO TEMPORAL (7 DIAS) ---
+  const periodoSeteDias = useMemo(() => { // Define o intervalo de tempo da última semana.
+    const hoje = new Date();
+    const lista = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(hoje.getDate() - i);
+      lista.push({ dia: d.getDate(), mes: d.getMonth() + 1, ano: d.getFullYear(), label: `${d.getDate()}/${d.getMonth() + 1}` });
+    }
+    return lista;
+  }, []);
 
-  // 1. Ranking de Cidades (Identificação Territorial)
-  const rankingCidades = useMemo(() => { // Calcula o volume de interesse por município.
-    const contagem = {}; // Pote para somar os acessos de cada cidade.
-    telemetria.forEach(t => { // Analisa cada registro de clique.
-      let cid = t.usuarioCidade || t.cidade; // Prioriza a cidade do cadastro oficial do irmão.
-      if (!cid || cid.includes("Identificada") || cid === "Visitante Externo") {
-        const buscaTexto = (t.rotulo || "").toUpperCase(); 
-        cid = CIDADES_LISTA.find(nomeCid => buscaTexto.includes(nomeCid.toUpperCase())) || "Outras Regiões";
-      }
-      contagem[cid] = (contagem[cid] || 0) + 1; // Soma o ponto para a cidade.
-    });
-    return Object.entries(contagem).sort((a, b) => b[1] - a[1]); // Retorna o ranking do maior para o menor.
-  }, [telemetria]); 
+  // --- 1. DADOS DE AUDIÊNCIA ---
+  const dadosAudiencia = useMemo(() => { // Prepara os dados de entrada.
+    if (slideAtivo === 0) {
+      return periodoSeteDias.map(p => {
+        const qtd = telemetria.filter(t => t.dia === p.dia && t.mes === p.mes && t.ano === p.ano).length;
+        return { name: p.label, qtd };
+      });
+    } else {
+      const consolidado = Array(12).fill(0).map((_, i) => ({ name: MESES_NOMES[i], qtd: 0 }));
+      telemetria.forEach(t => { if (t.mes >= 1 && t.mes <= 12) consolidado[t.mes - 1].qtd++; });
+      return consolidado;
+    }
+  }, [telemetria, slideAtivo, periodoSeteDias]);
 
-  // 2. Ranking de Usuários (Quem são os mais ativos)
-  const topUsuarios = useMemo(() => { // Identifica os irmãos logados que mais usam o sistema.
-    const contagem = {}; // Pote para somar ações por pessoa.
-    telemetria.filter(t => t.usuarioNome).forEach(t => { // Filtra apenas usuários identificados.
-      const chave = `${t.usuarioNome} (${t.usuarioCargo || 'Colaborador'})`; // Monta o crachá visual.
-      contagem[chave] = (contagem[chave] || 0) + 1; // Soma a ação deste irmão.
+  // --- 2. DADOS DE ORIGEM (ACUMULADO POR CIDADE) ---
+  const rankingOrigem7Dias = useMemo(() => { // Ranking de cidades da última semana.
+    const contagem = {};
+    const filtrados = telemetria.filter(t => periodoSeteDias.some(p => t.dia === p.dia && t.mes === p.mes));
+    filtrados.forEach(t => {
+      let cidade = t.usuarioCidade || t.cidadeDetectada || "PRIVADO";
+      if (cidade.toUpperCase().includes("EXTERNO")) cidade = "VISITANTE";
+      contagem[cidade.toUpperCase()] = (contagem[cidade.toUpperCase()] || 0) + 1;
     });
-    return Object.entries(contagem).sort((a,b) => b[1] - a[1]).slice(0, 5); // Pega os 5 primeiros.
+    return Object.entries(contagem).map(([name, qtd]) => ({ name, qtd })).sort((a, b) => b.qtd - a.qtd).slice(0, 8);
+  }, [telemetria, periodoSeteDias]);
+
+  const dadosMensaisOrigem = useMemo(() => { // Agrupa acessos do ano por mês e por cidade.
+    const cidadesSet = new Set();
+    const dados = MESES_NOMES.map((mes, i) => {
+      const registro = { name: mes };
+      telemetria.forEach(t => {
+        if (t.mes === i + 1) {
+          let cidade = t.usuarioCidade || t.cidadeDetectada || "PRIVADO";
+          if (cidade.toUpperCase().includes("EXTERNO")) cidade = "VISITANTE";
+          cidade = cidade.toUpperCase();
+          cidadesSet.add(cidade);
+          registro[cidade] = (registro[cidade] || 0) + 1;
+        }
+      });
+      return registro;
+    });
+    return { dados, cidades: Array.from(cidadesSet) };
   }, [telemetria]);
 
-  // 3. Análise de Interesses (Frequência por Ferramenta)
-  const analiseInteresses = useMemo(() => { // Mapeia o que a irmandade realmente está fazendo.
-    const potes = { 'GPS/Mapas': 0, 'Contatos': 0, 'Partilhas': 0, 'Pesquisas': 0, 'Leituras': 0 }; 
-    telemetria.forEach(t => { // Classifica os cliques por categoria de utilidade.
-      const acao = (t.acao || "").toUpperCase();
-      const cat = (t.categoria || "").toUpperCase();
-      if (acao.includes('MAPA')) potes['GPS/Mapas']++; 
-      else if (acao.includes('TELEFONE') || acao.includes('LIGAR')) potes['Contatos']++; 
-      else if (acao.includes('COMPARTILHAR')) potes['Partilhas']++; 
-      else if (cat.includes('PESQUISA')) potes['Pesquisas']++;
-      else if (cat.includes('INFORMATIVO') || acao.includes('LEITURA')) potes['Leituras']++;
+  // --- 3. DADOS DE POPULARIDADE (6 SLIDES) ---
+  const dadosPódio = useMemo(() => { // Central de processamento dos 6 gráficos de pódio.
+    const categorias = [
+      { titulo: 'Visão Geral', cat: 'Navegação', icon: <LayoutGrid size={18}/>, color: 'bg-slate-950' },
+      { titulo: 'Ensaios Locais', cat: 'GPS', icon: <MapPin size={18}/>, color: 'bg-blue-600' },
+      { titulo: 'Ensaios Regionais', cat: 'Regionais', icon: <Music size={18}/>, color: 'bg-emerald-600' },
+      { titulo: 'Contatos', cat: 'Comissão', icon: <Phone size={18}/>, color: 'bg-purple-600' },
+      { titulo: 'Informações', cat: 'Informativos', icon: <Info size={18}/>, color: 'bg-amber-600' },
+      { titulo: 'Cultos', cat: 'Cultos', icon: <BookOpen size={18}/>, color: 'bg-red-600' }
+    ];
+
+    const configAtual = categorias[slidePopAtivo];
+    const contagem = {};
+    // CORREÇÃO: Alterado de i.category para i.categoria conforme o log do banco
+    const filtrados = interacoes.filter(i => 
+      i.categoria === configAtual.cat && 
+      periodoSeteDias.some(p => i.dia === p.dia && i.mes === p.mes)
+    );
+
+    filtrados.forEach(i => {
+      const nome = i.rotulo || "Outros";
+      contagem[nome] = (contagem[nome] || 0) + 1;
     });
-    return Object.entries(potes).map(([name, value]) => ({ name, value })); // Retorna a lista pronta.
-  }, [telemetria]);
 
-  // 4. Fluxo Diário (O pulso do aplicativo)
-  const acessosPorDia = useMemo(() => { // Prepara a linha do tempo do mês vigente.
-    const mesAtual = new Date().getMonth() + 1; 
-    const dias = telemetria.filter(t => t.mes === mesAtual).reduce((acc, curr) => { 
-      acc[curr.dia] = (acc[curr.dia] || 0) + 1; return acc; 
-    }, {}); 
-    return Object.keys(dias).map(d => ({ name: `${d}`, acessos: dias[d] })).sort((a,b) => Number(a.name) - Number(b.name));
-  }, [telemetria]);
+    const ranking = Object.entries(contagem).map(([name, qtd]) => ({ name, qtd })).sort((a, b) => b.qtd - a.qtd).slice(0, 10);
+    return { ranking, ...configAtual };
+  }, [interacoes, slidePopAtivo, periodoSeteDias]);
 
-  if (loading) return <div className="p-10 text-center font-black uppercase text-slate-300 animate-pulse text-[10px] tracking-widest">Sintonizando Radar Regional...</div>;
+  const alternarSlidePop = (direcao) => { // Lógica para girar o carrossel.
+    if (direcao === 'next') setSlidePopAtivo(prev => (prev === 5 ? 0 : prev + 1));
+    else setSlidePopAtivo(prev => (prev === 0 ? 5 : prev - 1));
+  };
+
+  if (loading) return <div className="py-20 text-center animate-pulse flex flex-col items-center gap-4"><Activity className="text-slate-300" size={32} /><span className="font-black uppercase text-slate-300 text-[10px] tracking-widest">Sintonizando Radar...</span></div>;
 
   return ( 
-    <div className="space-y-6 animate-in pb-10 text-left"> 
+    <div className="space-y-6 animate-in pb-24 text-left"> 
       
-      {/* BLOCO 1: GRÁFICO DE FLUXO COM LEGENDA COMPLETA */}
-      <div className="bg-slate-950 p-7 rounded-[2.5rem] shadow-xl text-white"> 
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-2 bg-blue-600 rounded-xl"><LineIcon size={18} className="text-white" /></div>
-          <h4 className="text-sm font-black uppercase italic tracking-tighter">Volume de Atividade Diária</h4>
+      {/* CARD 1: AUDIÊNCIA */}
+      <div className="bg-slate-950 p-6 rounded-[2.5rem] shadow-2xl text-white relative overflow-hidden border border-white/5"> 
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-500/20 text-blue-400 rounded-2xl">{slideAtivo === 0 ? <Calendar size={18} /> : <BarChart3 size={18} />}</div>
+            <div>
+              <h4 className="text-[11px] font-black uppercase tracking-widest text-blue-400">{slideAtivo === 0 ? 'Fluxo Semanal' : 'Evolução Anual'}</h4>
+              <p className="text-[10px] font-bold text-slate-500 italic">Entradas no App</p>
+            </div>
+          </div>
+          <div className="flex bg-white/5 p-1 rounded-xl">
+            <button onClick={() => setSlideAtivo(0)} className={`p-2 rounded-lg transition-all ${slideAtivo === 0 ? 'bg-blue-500 text-white shadow-lg' : 'text-slate-500'}`}><ChevronLeft size={16} /></button>
+            <button onClick={() => setSlideAtivo(1)} className={`p-2 rounded-lg transition-all ${slideAtivo === 1 ? 'bg-blue-500 text-white shadow-lg' : 'text-slate-500'}`}><ChevronRight size={16} /></button>
+          </div>
         </div>
-        <div className="h-[220px] w-full pr-4"> 
+        <div className="h-[200px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={acessosPorDia} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff10" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748b', fontWeight: 'bold' }} dy={10} /> 
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748b', fontWeight: 'bold' }} />
-              <Tooltip contentStyle={{ background: '#0f172a', border: 'none', borderRadius: '12px', fontSize: '10px', color: '#fff', fontWeight: 'bold' }} labelFormatter={(v) => `Dia ${v}`} />
-              <Line type="monotone" dataKey="acessos" stroke="#3b82f6" strokeWidth={4} dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#020617' }} activeDot={{ r: 6, fill: '#fff' }} /> 
-            </LineChart>
+            {slideAtivo === 0 ? (
+              <LineChart data={dadosAudiencia} margin={{ top: 25, right: 20, left: -25, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff05" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748b', fontWeight: 'bold' }} /> 
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748b' }} domain={[0, 'dataMax + 10']} />
+                <Tooltip contentStyle={{ background: '#020617', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '10px' }} />
+                <Line type="monotone" dataKey="qtd" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#020617' }}>
+                  <LabelList dataKey="qtd" position="top" style={{ fill: '#fff', fontSize: '10px', fontWeight: '900' }} offset={12} />
+                </Line>
+              </LineChart>
+            ) : (
+              <BarChart data={dadosAudiencia} margin={{ top: 25, right: 20, left: -25, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff05" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748b' }} />
+                <YAxis axisLine={false} tickLine={false} hide domain={[0, 'dataMax + 50']} />
+                <Bar dataKey="qtd" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                   <LabelList dataKey="qtd" position="top" style={{ fill: '#fff', fontSize: '9px', fontWeight: '900' }} offset={10} />
+                </Bar>
+              </BarChart>
+            )}
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* BLOCO 2: MEMBROS EM DESTAQUE */}
-      <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm"> 
-        <div className="flex items-center gap-3 mb-6">
-          <UserCheck className="text-blue-600" size={18}/>
-          <h4 className="text-[10px] font-black uppercase text-slate-950 italic">Membros em Destaque (Logados)</h4>
-        </div>
-        <div className="space-y-3">
-          {topUsuarios.length > 0 ? topUsuarios.map(([identidade, qtd], i) => (
-            <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-2xl border border-slate-100">
-              <div className="flex flex-col">
-                <span className="text-[10px] font-black text-slate-900 uppercase">{identidade.split(' (')[0]}</span>
-                <span className="text-[7px] font-bold text-slate-400 uppercase">{identidade.split(' (')[1]?.replace(')', '')}</span>
-              </div>
-              <span className="text-[9px] font-black text-blue-600 bg-white px-3 py-1 rounded-full border border-slate-200">{qtd} AÇÕES</span>
+      {/* CARD 2: ORIGEM - AGORA COM ACUMULADO POR CIDADES (BARRAS EMPILHADAS) */}
+      <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm relative overflow-hidden">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-slate-950 text-white rounded-2xl"><MapPin size={18} /></div>
+            <div>
+              <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-950">{slideOrigemAtivo === 0 ? 'Cidades Ativas' : 'Acessos por Cidade'}</h4>
+              <p className="text-[10px] font-bold text-slate-400 italic">{slideOrigemAtivo === 0 ? 'Ranking Semanal' : 'Histórico Mensal'}</p>
             </div>
-          )) : (
-            <p className="text-[9px] font-bold text-slate-400 text-center py-4 italic uppercase">Aguardando novos registros logados...</p>
-          )}
+          </div>
+          <div className="flex bg-slate-50 p-1 rounded-xl">
+            <button onClick={() => setSlideOrigemAtivo(0)} className={`p-2 rounded-lg ${slideOrigemAtivo === 0 ? 'bg-white text-slate-950 shadow-sm border border-slate-200' : 'text-slate-400'}`}><ChevronLeft size={14} /></button>
+            <button onClick={() => setSlideOrigemAtivo(1)} className={`p-2 rounded-lg ${slideOrigemAtivo === 1 ? 'bg-white text-slate-950 shadow-sm border border-slate-200' : 'text-slate-400'}`}><ChevronRight size={14} /></button>
+          </div>
+        </div>
+        <div className="h-[240px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            {slideOrigemAtivo === 0 ? (
+              <BarChart data={rankingOrigem7Dias} layout="vertical" margin={{ top: 5, right: 45, left: 10, bottom: 5 }}>
+                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 8, fontWeight: '900', fill: '#64748b' }} width={80} />
+                <XAxis type="number" hide domain={[0, 'dataMax + 5']} />
+                <Bar dataKey="qtd" fill="#1e293b" radius={[0, 4, 4, 0]} barSize={12}>
+                  <LabelList dataKey="qtd" position="right" style={{ fill: '#1e293b', fontSize: '9px', fontWeight: '900' }} offset={12} />
+                </Bar>
+              </BarChart>
+            ) : (
+              <BarChart data={dadosMensaisOrigem.dados} margin={{ top: 20, right: 10, left: -25, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748b' }} />
+                <YAxis axisLine={false} tickLine={false} hide />
+                <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '10px' }} />
+                <Legend verticalAlign="bottom" align="center" iconType="circle" wrapperStyle={{ fontSize: '7px', fontWeight: '900', textTransform: 'uppercase', paddingTop: '15px' }} />
+                {dadosMensaisOrigem.cidades.map((cidade, idx) => (
+                  <Bar key={cidade} dataKey={cidade} stackId="a" fill={CORES_PALETA[idx % CORES_PALETA.length]} />
+                ))}
+              </BarChart>
+            )}
+          </ResponsiveContainer>
         </div>
       </div>
 
-      {/* BLOCO 3: MUNICÍPIOS (RANKING AMPLO) */}
-      <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm"> 
-        <div className="flex items-center gap-3 mb-6">
-          <MapPin className="text-red-500" size={18}/>
-          <h4 className="text-[10px] font-black uppercase text-slate-950 italic">Interesse Regional por Município</h4>
-        </div>
-        <div className="space-y-4"> 
-          {rankingCidades.slice(0, 12).map(([nome, valor], i) => ( 
-            <div key={i} className="space-y-1">
-              <div className="flex justify-between text-[8px] font-black uppercase px-1">
-                <span className="text-slate-500 italic">{nome}</span>
-                <span className="text-slate-950">{valor} interações</span>
-              </div>
-              <div className="h-2 bg-slate-50 rounded-full overflow-hidden"> 
-                <motion.div initial={{ width: 0 }} animate={{ width: `${(valor / (telemetria.length || 1)) * 100}%` }} className="h-full bg-slate-950 rounded-full" /> 
-              </div>
+      {/* CARD 3: PÓDIO DE INTERESSE - CORREÇÃO DE CHAVE "CATEGORIA" */}
+      <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm relative overflow-hidden">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-3">
+            <div className={`p-2.5 ${dadosPódio.color} text-white rounded-2xl shadow-lg`}>{dadosPódio.icon}</div>
+            <div>
+              <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-950">{dadosPódio.titulo}</h4>
+              <p className="text-[10px] font-bold text-slate-400 italic">Ranking Semanal</p>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* BLOCO 4: FUNCIONALIDADES MAIS UTILIZADAS */}
-      <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm"> 
-        <div className="flex items-center gap-3 mb-6">
-          <MousePointer2 className="text-slate-400" size={18}/>
-          <h4 className="text-[10px] font-black uppercase text-slate-950 italic">Frequência por Ferramenta</h4>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          {analiseInteresses.map(b => ( 
-            <div key={b.name} className="flex items-center gap-3 p-4 bg-slate-50 rounded-[1.8rem] border border-slate-100">
-              <div className="p-2 bg-white rounded-xl shadow-sm">
-                {b.name.includes('GPS') ? <MapPin size={14} className="text-amber-500"/> : 
-                 b.name.includes('Contatos') ? <Phone size={14} className="text-blue-600"/> : 
-                 b.name.includes('Pesquisas') ? <Search size={14} className="text-slate-400"/> :
-                 b.name.includes('Leituras') ? <BookOpen size={14} className="text-purple-500"/> :
-                 <Share2 size={14} className="text-emerald-500"/>}
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[12px] font-black text-slate-950 leading-none">{b.value}</span>
-                <span className="text-[7px] font-bold text-slate-400 uppercase mt-1 tracking-tighter">{b.name}</span>
-              </div>
+          </div>
+          <div className="flex bg-slate-50 p-1 rounded-xl">
+            <button onClick={() => alternarSlidePop('prev')} className="p-2 rounded-lg text-slate-400"><ChevronLeft size={16} /></button>
+            <div className="flex items-center px-2 gap-1">
+              {[0,1,2,3,4,5].map(i => <div key={i} className={`w-1 h-1 rounded-full ${slidePopAtivo === i ? 'bg-slate-950 w-3' : 'bg-slate-200'} transition-all`}/>)}
             </div>
-          ))}
+            <button onClick={() => alternarSlidePop('next')} className="p-2 rounded-lg text-slate-400"><ChevronRight size={16} /></button>
+          </div>
+        </div>
+        <div className="h-[380px] w-full relative">
+          <AnimatePresence mode="wait">
+            <motion.div key={slidePopAtivo} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="w-full h-full absolute inset-0">
+              <ResponsiveContainer width="100%" height="100%">
+                {dadosPódio.ranking.length > 0 ? (
+                  <BarChart data={dadosPódio.ranking} layout="vertical" margin={{ top: 5, right: 55, left: 30, bottom: 5 }}>
+                    <XAxis type="number" hide domain={[0, 'dataMax + 5']} />
+                    <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 8, fontWeight: '900', fill: '#0f172a' }} width={100} />
+                    <Bar dataKey="qtd" fill="#0f172a" radius={[0, 6, 6, 0]} barSize={18}>
+                      <LabelList dataKey="qtd" position="right" style={{ fill: '#0f172a', fontSize: '10px', fontWeight: '900' }} offset={15} />
+                    </Bar>
+                  </BarChart>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-300 opacity-50">
+                    <Trophy size={48} strokeWidth={1} />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Sem registros nesta categoria</span>
+                  </div>
+                )}
+              </ResponsiveContainer>
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
 
-      {/* AVISO DE AUDITORIA */}
-      <div className="bg-blue-50/50 p-5 rounded-[2.2rem] border border-blue-100 flex items-center gap-4">
-        <Shield size={20} className="text-blue-600 shrink-0" />
-        <p className="text-[8px] font-bold text-blue-700 uppercase leading-tight italic">
-          Painel de inteligência gerado com base em 1.000 logs auditados. Dados protegidos pela Regional.
-        </p>
+      {/* FOOTER DE STATUS */}
+      <div className="bg-slate-50 p-5 rounded-[2rem] border border-slate-200 flex items-center justify-between mx-2">
+        <div className="flex items-center gap-3">
+          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+          <span className="text-[9px] font-black uppercase text-slate-500 tracking-tighter">Radar Online • 2026</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Users size={12} className="text-slate-400" />
+          <span className="text-[10px] font-[900] text-slate-950 italic">{telemetria.length} SESSÕES</span>
+        </div>
       </div>
-      
-      <div className="py-10 text-center opacity-10"> 
-        <Activity size={24} className="mx-auto mb-2" />
-        <span className="text-[8px] font-black uppercase tracking-[0.4em]">Intelligence Center • 2026</span>
-      </div>
-
     </div> 
   );
 };
 
-export default TelemetriaTab; // Exportação do Dashboard completo e agora 100% resiliente a erros.
+export default TelemetriaTab; // Exporta o radar afinado com histórico territorial e correção de chaves de busca.

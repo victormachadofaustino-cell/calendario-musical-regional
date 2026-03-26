@@ -1,120 +1,138 @@
 // src/constants/comuns.js // Identifica que este é o arquivo de locais e funções compartilhadas.
 
+import { db } from '../firebaseConfig'; // Conecta com o banco de dados oficial da Regional.
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'; // Prepara as ferramentas de escrita do Google.
+
 /**
  * Função Única de Normalização para todo o App. // Nome da função que padroniza os textos.
  * Remove acentos, espaços extras e padroniza termos.
  */
-export const normalizarTexto = (t) => { // Cria a função "afinadora" de palavras.
-  if (!t) return ""; // Se o campo estiver vazio, retorna nada para não travar.
-  return t // Começa a transformar o texto original.
-    .toUpperCase() // Deixa tudo em letra MAIÚSCULA.
-    .normalize("NFD") // Desmonta os acentos (o 'á' vira 'a' + '´').
-    .replace(/[\u0300-\u036f]/g, "") // Remove fisicamente os acentinhos que sobraram.
-    .replace(/\bPAULISTA\b/g, "") // Tira a palavra "PAULISTA" para facilitar o encontro.
-    .replace(/\bPTA\b/g, "") // Tira o "PTA" para o sistema não se confundir.
-    .replace(/\s+/g, "") // Arranca todos os espaços para virar uma palavra só.
-    .trim(); // Limpa as pontas do texto.
-}; // Fecha a lógica da função.
+export const normalizarTexto = (t) => { // Cria a função "afinadora" de palavras para evitar duplicados.
+  if (!t) return ""; // Se o campo estiver vazio, retorna nada para não travar o sistema.
+  return t // Começa a transformar o texto original enviado pelo usuário.
+    .toUpperCase() // Deixa tudo em letra MAIÚSCULA para o banco não diferenciar 'Jundiaí' de 'jundiaí'.
+    .normalize("NFD") // Desmonta os acentos (faz o sistema entender que 'á' é apenas um 'a' com marcação).
+    .replace(/[\u0300-\u036f]/g, "") // Remove fisicamente os acentos para facilitar buscas.
+    .replace(/\bPAULISTA\b/g, "") // Tira a palavra "PAULISTA" para encurtar nomes de cidades no gráfico.
+    .replace(/\bPTA\b/g, "") // Tira a abreviação "PTA" para padronizar o ranking territorial.
+    .replace(/\s+/g, "") // Arranca todos os espaços para transformar em uma "chave" única de texto.
+    .trim(); // Limpa espaços invisíveis que sobram nas pontas.
+}; // Fecha a lógica da função afinadora.
 
 /**
- * REGISTRADOR DE TELEMETRIA IDENTIFICADA (O Olheiro da Orquestra) // Função vital para gravar os passos reais.
- * Esta função grava cada clique importante com os dados reais do perfil do usuário.
+ * REGISTRADOR DE ACESSOS (O Porteiro da Orquestra) // NOVO: Alimenta os gráficos de Acessos Diários e Anuais.
+ * Esta função anota cada vez que o link do aplicativo é carregado.
  */
-export const registrarEvento = async (categoria, acao, rotulo, user = null) => { // Inicia o registro do movimento recebendo o 'user'.
-  try { // Tenta realizar a gravação no banco de dados.
-    const { db } = await import('../firebaseConfig'); // Busca a conexão oficial com o banco.
-    const { addDoc, collection, serverTimestamp } = await import('firebase/firestore'); // Prepara as ferramentas de escrita.
-    
-    // PREPARAÇÃO DO "CRACHÁ" DIGITAL: Pega os dados reais do perfil.
-    const nomeUsuario = user?.nome || user?.displayName || "Visitante Anônimo"; // Identifica o nome do irmão ou visitante.
-    const cargoUsuario = user?.cargo || "Visitante"; // Identifica se é Secretário, Encarregado, etc.
-    const cidadeOficial = user?.cidade || user?.cidadeDetectada || "Não Identificada"; // Prioriza a cidade do cadastro.
-    const uidUsuario = user?.uid || "anonimo"; // Guarda o código único do usuário.
+export const registrarAcesso = async (userData, cidadeDetectada) => { // Inicia o sensor de entrada no App.
+  try { // Tenta gravar a informação no banco de dados.
+    const hoje = new Date(); // Pega o relógio interno do dispositivo.
+    const colecaoAcessos = collection(db, "telemetria_acessos"); // Aponta para a gaveta de estatísticas de audiência.
 
-    await addDoc(collection(db, "telemetria_interacoes"), { // Abre a gaveta de telemetria no banco.
+    await addDoc(colecaoAcessos, { // Cria uma nova ficha de acesso com os seguintes dados:
+      usuarioNome: userData?.nome || "Visitante", // Identifica se é um colaborador ou alguém de fora.
+      usuarioCidade: userData?.cidade || cidadeDetectada || "Não Identificada", // Pega a cidade do perfil ou do IP.
+      cidade: normalizarTexto(userData?.cidade || cidadeDetectada || "OUTRA"), // Salva a cidade "limpa" para o gráfico.
+      dia: hoje.getDate(), // Guarda o número do dia (ex: 26).
+      mes: hoje.getMonth() + 1, // Guarda o mês (ex: 3 para Março).
+      ano: hoje.getFullYear(), // Guarda o ano (ex: 2026).
+      data: serverTimestamp(), // Pega o horário oficial direto do satélite do Google (Auditoria).
+      tipo: "Entrada no App" // Define que este log é uma abertura do sistema.
+    }); // Fim da ficha.
+  } catch (e) { // Se a internet cair ou houver erro...
+    console.error("Falha ao registrar acesso único:", e); // Avisa o erro apenas no console técnico.
+  } // Fim da proteção de erro.
+}; // Fecha a função do Porteiro.
+
+/**
+ * REGISTRADOR DE TELEMETRIA DE INTERAÇÃO (O Olheiro da Orquestra) // Função que grava cliques em botões.
+ */
+export const registrarEvento = async (categoria, acao, rotulo, user = null) => { // Registra movimentos como cliques em mapas ou contatos.
+  try { // Tenta realizar a gravação.
+    // PREPARAÇÃO DO "CRACHÁ" DIGITAL: Pega os dados reais do perfil para saber quem usou qual ferramenta.
+    const nomeUsuario = user?.nome || user?.displayName || "Visitante Anônimo"; // Identifica o irmão ou visitante.
+    const cargoUsuario = user?.cargo || "Visitante"; // Identifica o cargo ministerial.
+    const cidadeOficial = user?.cidade || user?.cidadeDetectada || "Não Identificada"; // Prioriza cidade do cadastro.
+    const uidUsuario = user?.uid || "anonimo"; // Código de segurança do usuário.
+
+    await addDoc(collection(db, "telemetria_interacoes"), { // Abre a gaveta de cliques no banco.
       categoria: categoria || "Geral", // Ex: 'Ensaios Locais' ou 'Navegação'.
       acao: acao || "Interação", // Ex: 'Clique Mapa' ou 'Troca de Módulo'.
-      rotulo: rotulo || "Não Identificado", // Nome da igreja ou do botão clicado.
-      usuarioNome: nomeUsuario, // Nome completo do irmão.
-      usuarioCargo: cargoUsuario, // Cargo ministerial dele.
-      usuarioCidade: cidadeOficial, // Cidade onde ele atua.
-      usuarioUid: uidUsuario, // O código único dele no seu banco.
-      cidadeIp: user?.cidadeDetectada || "N/A", // Deixa guardado também o que o IP disse.
-      data: serverTimestamp(), // Pega a hora exata direto do relógio do Google.
-      timestamp: new Date().toISOString(), // Guarda uma versão da data fácil de ler.
-      mes: new Date().getMonth() + 1, // Guarda o mês para gráficos mensais.
-      dia: new Date().getDate(), // Guarda o dia para gráficos diários.
-      ano: new Date().getFullYear() // Guarda o ano para históricos.
-    }); // Fecha o pacote de dados enviado ao Google.
-  } catch (err) { // Caso a internet falhe ou o dado seja inválido.
-    console.error("Falha na telemetria:", err); // Avisa o erro apenas no console técnico.
-  } // Fim da proteção de erro.
-}; // Fim da função de registro.
+      rotulo: rotulo || "Não Identificado", // Nome da igreja ou do botão que recebeu o toque.
+      usuarioNome: nomeUsuario, // Nome que aparecerá no Dashboard de Zelo.
+      usuarioCargo: cargoUsuario, // Cargo para filtros de uso por função.
+      usuarioCidade: cidadeOficial, // Cidade para o mapa de calor de cliques.
+      usuarioUid: uidUsuario, // O código único no banco de dados.
+      cidadeIp: user?.cidadeDetectada || "N/A", // Registro extra baseado na internet do usuário.
+      data: serverTimestamp(), // Hora oficial do servidor do Google.
+      timestamp: new Date().toISOString(), // Data em formato de texto para conferência rápida.
+      mes: new Date().getMonth() + 1, // Mês para separação em relatórios.
+      dia: new Date().getDate(), // Dia para monitorar picos de interesse.
+      ano: new Date().getFullYear() // Ano para histórico de longo prazo.
+    }); // Fecha o pacote de cliques enviado.
+  } catch (err) { // Caso ocorra falha técnica.
+    console.error("Falha na telemetria de cliques:", err); // Log técnico de erro.
+  } // Fim da proteção.
+}; // Fecha a função do Olheiro.
 
 /**
- * REGISTRADOR DE PESQUISAS (O Termômetro de Interesse) // Grava o que os irmãos buscam.
+ * REGISTRADOR DE PESQUISAS (O Termômetro de Interesse) // Grava o que a irmandade digita na busca.
  */
-export const registrarPesquisa = async (termo, user = null) => { // Inicia o registro da busca.
-  if (!termo || termo.length < 3) return; // Só grava se digitar pelo menos 3 letras.
-  try { // Tenta gravar.
-    const { db } = await import('../firebaseConfig'); // Conecta ao banco.
-    const { addDoc, collection, serverTimestamp } = await import('firebase/firestore'); // Prepara ferramentas.
-
-    await addDoc(collection(db, "telemetria_pesquisas"), { // Abre a gaveta de pesquisas.
-      termo: termo.toUpperCase().trim(), // Salva a busca em letras grandes.
-      usuarioNome: user?.nome || "Visitante Anônimo", // Quem buscou.
-      usuarioCargo: user?.cargo || "Visitante", // Cargo de quem buscou.
-      usuarioCidade: user?.cidade || "Não Identificada", // Origem da busca.
-      data: serverTimestamp() // Hora oficial.
-    }); // Envia os dados.
-  } catch (err) { // Proteção de erro.
-    console.error("Erro ao registrar pesquisa:", err); // Aviso técnico.
+export const registrarPesquisa = async (termo, user = null) => { // Inicia o registro da barra de busca.
+  if (!termo || termo.length < 3) return; // Só anota se o irmão digitar mais que 3 letras para evitar lixo no banco.
+  try { // Tenta enviar a pesquisa ao banco.
+    await addDoc(collection(db, "telemetria_pesquisas"), { // Abre a gaveta de termos pesquisados.
+      termo: termo.toUpperCase().trim(), // Salva o texto em letras grandes para agrupar resultados iguais.
+      usuarioNome: user?.nome || "Visitante Anônimo", // Quem está procurando.
+      usuarioCargo: user?.cargo || "Visitante", // Função de quem buscou.
+      usuarioCidade: user?.cidade || "Não Identificada", // De onde veio a dúvida.
+      data: serverTimestamp() // Momento exato da busca.
+    }); // Finaliza o envio.
+  } catch (err) { // Se falhar...
+    console.error("Erro ao registrar termo pesquisado:", err); // Log técnico.
   } // Fim da proteção.
-}; // Fim da função de busca.
+}; // Fecha a função do Termômetro.
 
 /**
  * FUNÇÃO DE BUSCA GEOGRÁFICA (O Maestro do GPS) 
- * Em vez de coordenadas fixas, gera um link de pesquisa direta no Google Maps.
- * Formato: Congregação Cristã no Brasil - [Bairro] - [Cidade]
+ * Gera um link de pesquisa inteligente para o Google Maps encontrar a igreja sem erro.
  */
-export const buscarDirecaoNoMapa = (cidade, localidade) => { // Cria a função que gera o link do mapa.
-  if (!cidade || !localidade) return "#"; // Se faltar dado, retorna um link vazio para não quebrar o app.
+export const buscarDirecaoNoMapa = (cidade, localidade) => { // Gera o link que abre o GPS no celular.
+  if (!cidade || !localidade) return "#"; // Se o dado estiver incompleto, retorna um link morto para segurança.
   
-  // Monta a "partitura" de busca padronizada para o Google encontrar a igreja exata.
+  // Monta a frase de busca que o Google Maps entende perfeitamente: 'Congregação Cristã no Brasil - Bairro - Cidade'.
   const buscaPadrao = `Congregacao Crista no Brasil - ${localidade} - ${cidade}`; 
   
-  // Transforma o texto em um formato que a internet entende (troca espaços por códigos).
+  // Transforma espaços e símbolos em código que o navegador entende (ex: espaço vira %20).
   const queryFormatada = encodeURIComponent(buscaPadrao); 
   
-  // Retorna o link oficial de busca do Google Maps.
+  // Retorna o endereço oficial de busca do Google Maps corrigido para uso mobile.
   return `https://www.google.com/maps/search/?api=1&query=${queryFormatada}`; 
-}; // Fim da função de geração de link.
+}; // Fecha o gerador de GPS.
 
 /**
- * MANTEMOS A LISTA ABAIXO APENAS PARA LOCAIS QUE O GOOGLE NÃO ENCONTRA POR TEXTO.
- * Se a localidade estiver aqui, o App usará o ponto exato. Se não, usará a busca acima.
+ * LISTA TÉCNICA DE COORDENADAS FIXAS (Exceções de Localização)
+ * Usada apenas para igrejas onde a busca por texto do Google falha.
  */
-export const LISTA_COMUNS_COORDENADAS = [ // Mantém a lista para compatibilidade e casos ultra-específicos.
-  // Você pode apagar as que o Google já acha bem e deixar só as de difícil acesso.
+export const LISTA_COMUNS_COORDENADAS = [ // Mantém pontos exatos de Latitude e Longitude para casos difíceis.
   { cidade: "Cabreúva", localidade: "Bananal", lat: -23.3322, lon: -47.1555 },
   { cidade: "Jundiaí", localidade: "Central", lat: -23.1857, lon: -46.8978 }
 ]; // Fim da lista técnica.
 
 /**
- * Maestro do GPS que decide entre a Coordenada Real ou a Busca por Texto.
+ * BUSCA DE COORDENADAS: Decide se usa o ponto exato da lista acima ou a busca por texto.
  */
-export const buscarCoordenadas = (cidade, localidade) => { // Inicia a verificação.
-  const cNorm = normalizarTexto(cidade); // "Afina" o nome da cidade.
-  const lNorm = normalizarTexto(localidade); // "Afina" o nome da localidade.
+export const buscarCoordenadas = (cidade, localidade) => { // Inicia o processo de decisão do GPS.
+  const cNorm = normalizarTexto(cidade); // Limpa o nome da cidade.
+  const lNorm = normalizarTexto(localidade); // Limpa o nome da Comum.
 
-  // Tenta achar primeiro na lista de exceções (coordenadas fixas).
+  // Procura primeiro se essa igreja está na nossa lista de coordenadas fixas (casos especiais).
   const comum = LISTA_COMUNS_COORDENADAS.find(c => 
     normalizarTexto(c.cidade).includes(cNorm) && normalizarTexto(c.localidade) === lNorm 
-  ); //
+  ); 
   
-  // Se achou na lista, entrega a coordenada exata.
-  if (comum) return { lat: comum.lat, lon: comum.lon }; //
+  // Se encontrar na lista de exceções, entrega o mapa exato (pin fixo).
+  if (comum) return { lat: comum.lat, lon: comum.lon }; 
   
-  // Se NÃO achou na lista, o App usará a função 'buscarDirecaoNoMapa' definida acima.
+  // Se NÃO estiver na lista, o App usará automaticamente a busca por texto 'buscarDirecaoNoMapa'.
   return null; 
-}; // Fim da função.
+}; // Fim do seletor de coordenadas.

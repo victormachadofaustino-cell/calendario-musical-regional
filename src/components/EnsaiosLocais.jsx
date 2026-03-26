@@ -13,10 +13,10 @@ import Feedback from './Feedback'; // Componente que mostra avisos de "Sucesso" 
 // Importação das constantes centralizadas, funções utilitárias e permissões
 import { CIDADES_LISTA } from '../constants/cidades'; // Lista oficial de cidades da região.
 import { normalizarTexto, registrarEvento, buscarDirecaoNoMapa } from '../constants/comuns'; // Importa a afinadora, o olheiro e o novo mestre do GPS.
-import { isMaster, podeVerBotoesDeGestao } from '../constants/permissions'; // Motor de regras de acesso (Simulado conforme contexto de uso).
+import { isMaster, podeVerBotoesDeGestao } from '../constants/permissions'; // Motor de regras de acesso.
 
 // Ferramentas centralizadas para ações de compartilhamento.
-import { compartilharEnsaio } from '../utils/actions'; // Função para WhatsApp (Simulada conforme contexto).
+import { compartilharEnsaio } from '../utils/actions'; // Função para WhatsApp.
 
 const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, userData }) => { // Início do componente recebendo o perfil.
   const [busca, setBusca] = useState(''); // Guarda o texto de procura de igreja.
@@ -46,23 +46,25 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
     }
   }, [diaFiltroApp]); 
 
-  const ligarTelefone = (numero, localidade) => { // Inicia chamada telefônica.
+  const ligarTelefone = (numero, localidade, cidade) => { // Inicia chamada telefônica.
     if (!numero || numero === "-") return; 
-    registrarEvento('Ensaios Locais', 'Clique Telefone', localidade, userData); // Registra quem ligou para qual igreja.
+    // Sensor: Grava o clique no telefone com a etiqueta [Igreja] - (Cidade).
+    registrarEvento('GPS', 'Clique Telefone', `[${localidade}] - (${cidade})`, userData); 
     const limpo = numero.replace(/\D/g, ""); 
     window.open(`tel:${limpo}`, '_self'); 
   };
 
   const acaoAbrirMapa = (localidade, cidade) => { // Dispara o GPS Inteligente.
-    registrarEvento('Ensaios Locais', 'Clique Mapa', `${cidade} - ${localidade}`, userData); // Registra o uso do GPS.
-    // A MUDANÇA ESTÁ AQUI: Agora usamos a função que gera a busca por texto em vez de coordenadas fixas.
-    const urlMapa = buscarDirecaoNoMapa(cidade, localidade); 
-    window.open(urlMapa, '_blank'); 
+    // Sensor: Grava o interesse no mapa com a etiqueta padronizada [Igreja] - (Cidade).
+    registrarEvento('GPS', 'Clique Mapa', `[${localidade}] - (${cidade})`, userData); 
+    const urlMapa = buscarDirecaoNoMapa(cidade, localidade); // Gera o link do Google Maps.
+    window.open(urlMapa, '_blank'); // Abre o navegador.
   };
 
-  const acaoCompartilhar = (ensaio) => { // Partilha o ensaio.
-    registrarEvento('Ensaios Locais', 'Clique Compartilhar', ensaio.localidade, userData); // Registra o compartilhamento.
-    compartilharEnsaio(ensaio); 
+  const acaoCompartilharEnsaioPadrao = (ensaio) => { // Partilha o ensaio via WhatsApp.
+    // Sensor: Grava o compartilhamento com a etiqueta [Igreja] - (Cidade).
+    registrarEvento('GPS', 'Clique Compartilhar', `[${ensaio.localidade}] - (${ensaio.cidade})`, userData); 
+    compartilharEnsaio(ensaio); // Aciona a função de convite.
   };
 
   const normalizarCidadeParaDropdown = (cidadeBanco) => { // Faz a ponte entre o banco e o menu visual.
@@ -275,8 +277,8 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
                       )}
 
                       <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100">
-                        <button disabled={!e.contato || e.contato === "-"} onClick={() => ligarTelefone(e.contato, e.localidade)} className="bg-white border border-slate-200 text-blue-600 p-4 rounded-2xl active:scale-90 flex justify-center shadow-sm disabled:opacity-30"><Phone size={18} /></button>
-                        <button disabled={!e.contato || e.contato === "-"} onClick={() => acaoCompartilhar(e)} className="bg-white border border-slate-200 text-emerald-600 p-4 rounded-2xl active:scale-90 flex justify-center shadow-sm disabled:opacity-30"><Share2 size={18} /></button>
+                        <button disabled={!e.contato || e.contato === "-"} onClick={() => ligarTelefone(e.contato, e.localidade, e.cidade)} className="bg-white border border-slate-200 text-blue-600 p-4 rounded-2xl active:scale-90 flex justify-center shadow-sm disabled:opacity-30"><Phone size={18} /></button>
+                        <button disabled={!e.contato || e.contato === "-"} onClick={() => acaoCompartilharEnsaioPadrao(e)} className="bg-white border border-slate-200 text-emerald-600 p-4 rounded-2xl active:scale-90 flex justify-center shadow-sm disabled:opacity-30"><Share2 size={18} /></button>
                         <button onClick={() => acaoAbrirMapa(e.localidade, e.cidade)} className="bg-slate-950 text-white p-4 rounded-2xl active:scale-90 flex justify-center shadow-lg"><MapPin size={18} /></button>
                       </div>
                     </div>
@@ -367,4 +369,4 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
   );
 };
 
-export default EnsaiosLocais; // Exporta o arquivo afinado.
+export default EnsaiosLocais; // Exporta o arquivo afinado com a nova etiqueta [Igreja] - (Cidade).

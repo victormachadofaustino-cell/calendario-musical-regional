@@ -14,11 +14,11 @@ import {
 // IMPORTAÇÕES DE CONSTANTES E MOTOR DE PERMISSÕES
 import { normalizarTexto } from '../../constants/comuns'; // Função que remove acentos e padroniza nomes para busca.
 import { CIDADES_LISTA } from '../../constants/cidades'; // Lista oficial de cidades da Regional Jundiaí.
-import { isMaster, isComissao, temAcessoAoDashboard } from '../../constants/permissions'; // AFINAÇÃO: Importa as regras de Master e Comissão para o Dashboard.
+import { isMaster, isComissao, temAcessoAoDashboard } from '../../constants/permissions'; // Importa as regras de Master e Comissão para o Dashboard.
 
 const IndicadoresTab = ({ todosEnsaios, ensaiosRegionais, examinadoras, encarregados, user }) => { // Início do componente técnico.
   const masterLogado = isMaster(user); // Verifica se o usuário tem nível administrativo total (Secretário Regional).
-  const integranteComissao = isComissao(user); // NOVO: Verifica se o irmão possui o distintivo da Comissão Musical (Estrela).
+  const integranteComissao = isComissao(user); // Verifica se o irmão possui o distintivo da Comissão Musical (Estrela).
   
   // AFINAÇÃO: Se for Master OU Comissão, começa vendo a Regional inteira. Caso contrário, vê apenas sua cidade.
   const [cidadeSelecionada, setCidadeSelecionada] = useState((masterLogado || integranteComissao) ? 'REGIONAL' : user?.cidade); 
