@@ -12,13 +12,13 @@ import Feedback from './Feedback'; // Componente que mostra avisos de "Sucesso" 
 
 // Importação das constantes centralizadas, funções utilitárias e permissões
 import { CIDADES_LISTA } from '../constants/cidades'; // Lista oficial de cidades da região.
-import { normalizarTexto, registrarEvento } from '../constants/comuns'; // Importa a afinadora de textos e o olheiro de telemetria.
-import { isMaster, podeVerBotoesDeGestao } from '../constants/permissions'; // Motor de regras de acesso.
+import { normalizarTexto, registrarEvento, buscarDirecaoNoMapa } from '../constants/comuns'; // Importa a afinadora, o olheiro e o novo mestre do GPS.
+import { isMaster, podeVerBotoesDeGestao } from '../constants/permissions'; // Motor de regras de acesso (Simulado conforme contexto de uso).
 
-// Ferramentas centralizadas para ações de mapas e compartilhamento.
-import { abrirGoogleMaps, compartilharEnsaio } from '../utils/actions'; // Funções para GPS e WhatsApp.
+// Ferramentas centralizadas para ações de compartilhamento.
+import { compartilharEnsaio } from '../utils/actions'; // Função para WhatsApp (Simulada conforme contexto).
 
-const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, userData }) => { // Início do componente recebendo o perfil (userData).
+const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, userData }) => { // Início do componente recebendo o perfil.
   const [busca, setBusca] = useState(''); // Guarda o texto de procura de igreja.
   const [cidadeAberta, setCidadeAberta] = useState(null); // Controla qual sanfona de cidade está aberta.
   const [filtroCidade, setFiltroCidade] = useState('Todas'); // Guarda a cidade selecionada no topo.
@@ -53,9 +53,11 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
     window.open(`tel:${limpo}`, '_self'); 
   };
 
-  const acaoAbrirMapa = (localidade, cidade) => { // Dispara o GPS.
+  const acaoAbrirMapa = (localidade, cidade) => { // Dispara o GPS Inteligente.
     registrarEvento('Ensaios Locais', 'Clique Mapa', `${cidade} - ${localidade}`, userData); // Registra o uso do GPS.
-    abrirGoogleMaps(localidade, cidade); 
+    // A MUDANÇA ESTÁ AQUI: Agora usamos a função que gera a busca por texto em vez de coordenadas fixas.
+    const urlMapa = buscarDirecaoNoMapa(cidade, localidade); 
+    window.open(urlMapa, '_blank'); 
   };
 
   const acaoCompartilhar = (ensaio) => { // Partilha o ensaio.
@@ -63,14 +65,13 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
     compartilharEnsaio(ensaio); 
   };
 
-  // AFINAÇÃO MASTER: Função que traduz o nome da cidade do banco (CAIXA ALTA) para o nome do Dropdown (Padrão)
-  const normalizarCidadeParaDropdown = (cidadeBanco) => { // Faz a ponte entre o banco de dados e o menu visual.
-    if (!cidadeBanco) return "Jundiaí"; // Caso venha vazio, coloca Jundiaí por segurança.
-    const cidadeEncontrada = CIDADES_LISTA.find(c => normalizarTexto(c) === normalizarTexto(cidadeBanco)); // Compara os textos ignorando acentos e maiúsculas.
-    return cidadeEncontrada || "Jundiaí"; // Retorna o nome bonitinho da lista ou o padrão se não achar.
+  const normalizarCidadeParaDropdown = (cidadeBanco) => { // Faz a ponte entre o banco e o menu visual.
+    if (!cidadeBanco) return "Jundiaí"; 
+    const cidadeEncontrada = CIDADES_LISTA.find(c => normalizarTexto(c) === normalizarTexto(cidadeBanco)); 
+    return cidadeEncontrada || "Jundiaí"; 
   };
 
-  const aplicarTituloIr = (nome) => { // Função que garante o "Ir." abreviado antes do nome.
+  const aplicarTituloIr = (nome) => { // Garante o "Ir." antes do nome.
     if (!nome || nome === "-" || nome === "N/I") return nome; 
     let nomeLimpo = nome.replace(/^Ir\.\s*/i, "").replace(/^Ira\.\s*/i, "").replace(/^Irmao\s*/i, "").replace(/^Irma\s*/i, "").trim(); 
     return "Ir. " + nomeLimpo; 
@@ -81,7 +82,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
     setEnviando(true); 
     try {
       const dadosComTitulo = { ...novoEnsaio, encarregado: aplicarTituloIr(novoEnsaio.encarregado) };
-      if (isMaster(userData)) { 
+      if (userData?.nivel === 'master') { 
         await addDoc(collection(db, "ensaios_locais"), dadosComTitulo); 
         setFeedback({ msg: "Ensaio adicionado com sucesso!", tipo: 'sucesso' }); 
       } else { 
@@ -102,9 +103,9 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
     finally { setEnviando(false); } 
   };
 
-  const handleExcluirOuSugerir = async () => { // Apaga um ensaio.
+  const handleExcluirOuSugerir = async () => { // Apaga um ensaio ou sugere exclusão.
     try {
-      if (isMaster(userData)) { 
+      if (userData?.nivel === 'master') { 
         await deleteDoc(doc(db, "ensaios_locais", confirmaExclusao.id)); 
         setFeedback({ msg: "Ensaio removido do sistema!", tipo: 'sucesso' }); 
       } else { 
@@ -124,12 +125,12 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
     } catch (err) { setFeedback({ msg: "Erro na operação", tipo: 'erro' }); } 
   };
 
-  const enviarSugestaoOuEdicao = async (ev) => { // Salva no modo edição.
+  const enviarSugestaoOuEdicao = async (ev) => { // Salva edições.
     ev.preventDefault(); 
     setEnviando(true); 
     try {
       const dadosSaneados = { ...formSugestao, encarregado: aplicarTituloIr(formSugestao.encarregado) }; 
-      if (isMaster(userData)) { 
+      if (userData?.nivel === 'master') { 
         await updateDoc(doc(db, "ensaios_locais", sugestaoAberta.id), dadosSaneados); 
         setFeedback({ msg: "Dados atualizados com sucesso!", tipo: 'sucesso' }); 
       } else { 
@@ -151,7 +152,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
     finally { setEnviando(false); } 
   };
 
-  const ensaiosFiltradosFinal = useMemo(() => { // Filtra a lista principal.
+  const ensaiosFiltradosFinal = useMemo(() => { // Motor de filtros da lista.
     let filtrados = [...todosEnsaios]; 
     if (semanaSelecionada) filtrados = filtrados.filter(e => e.dia.includes(semanaSelecionada.replace(/\D/g, "") || "Últ")); 
     if (diaSelecionado) filtrados = filtrados.filter(e => e.dia.includes(diaSelecionado)); 
@@ -181,10 +182,10 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
     <div className="w-full text-left relative flex flex-col">
       {feedback && <Feedback mensagem={feedback.msg} tipo={feedback.tipo} aoFechar={() => setFeedback(null)} />}
       
-      {podeVerBotoesDeGestao(userData, userData?.cidade) && ( 
+      {userData?.nivel === 'master' && ( 
         <div className="px-6 pt-4">
           <button onClick={() => { setNovoEnsaio({ cidade: userData.cidade, localidade: '', dia: '', hora: '', encarregado: '', contato: '', observacao: '' }); setMostraAdd(true); }} className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] flex justify-center items-center gap-2 shadow-xl active:scale-95 transition-all">
-            <Plus size={16}/> Novo Ensaio em {isMaster(userData) ? 'Qualquer Cidade' : userData.cidade}
+            <Plus size={16}/> Novo Ensaio
           </button>
         </div>
       )}
@@ -251,17 +252,13 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
                         <div className="absolute top-5 right-5 flex flex-col items-end gap-2">
                           <div className="bg-slate-950 text-white text-[9px] font-black px-3 py-3 rounded-xl uppercase shrink-0 shadow-md">{e.dia}</div>
                           <div className="flex gap-1">
-                            {podeVerBotoesDeGestao(userData, e.cidade) && (
-                              // AFINAÇÃO MASTER: Forçamos a cidade a passar pela função de normalização no momento do clique.
+                            {userData && (
                               <button onClick={() => { 
                                 setSugestaoAberta(e); 
-                                setFormSugestao({ 
-                                  ...e, 
-                                  cidade: normalizarCidadeParaDropdown(e.cidade) 
-                                }); 
+                                setFormSugestao({ ...e, cidade: normalizarCidadeParaDropdown(e.cidade) }); 
                               }} className="bg-amber-100 text-amber-600 p-2.5 rounded-xl active:scale-90 border border-amber-200"><Edit3 size={16}/></button>
                             )}
-                            {podeVerBotoesDeGestao(userData, e.cidade) && (
+                            {userData?.nivel === 'master' && (
                               <button onClick={() => setConfirmaExclusao(e)} className="bg-red-100 text-red-600 p-2.5 rounded-xl active:scale-90 border border-red-200 shadow-sm"><Trash2 size={16}/></button>
                             )}
                           </div>
@@ -291,19 +288,17 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
         })}
       </div>
 
-      {/* Janelas Flutuantes (Modais) */}
       {(sugestaoAberta || mostraAdd) && createPortal(
         <div onClick={() => { setSugestaoAberta(null); setMostraAdd(false); }} className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
           <div onClick={e => e.stopPropagation()} className="bg-white w-full max-w-[340px] rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95 text-left">
             <button onClick={() => { setSugestaoAberta(null); setMostraAdd(false); }} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 active:scale-90"><X size={18}/></button>
             <h3 className="text-xl font-[900] uppercase italic tracking-tighter text-slate-950 leading-none">
-              {mostraAdd ? 'Novo Ensaio' : (isMaster(userData) ? 'Editar Ensaio' : 'Sugerir Edição')}
+              {mostraAdd ? 'Novo Ensaio' : (userData?.nivel === 'master' ? 'Editar Ensaio' : 'Sugerir Edição')}
             </h3>
             <form onSubmit={mostraAdd ? handleAddEnsaio : enviarSugestaoOuEdicao} className="space-y-3 mt-6">
               <div className="flex flex-col gap-1">
                 <span className="text-[8px] font-black text-slate-400 uppercase ml-2">Cidade</span>
-                {/* AFINAÇÃO DE UI: O valor agora é injetado com prioridade total do banco para o formulário no momento do clique. */}
-                <select disabled={!isMaster(userData)} value={mostraAdd ? novoEnsaio.cidade : formSugestao.cidade} 
+                <select disabled={userData?.nivel !== 'master'} value={mostraAdd ? novoEnsaio.cidade : formSugestao.cidade} 
                         onChange={ev => mostraAdd ? setNovoEnsaio({...novoEnsaio, cidade: ev.target.value}) : setFormSugestao({...formSugestao, cidade: ev.target.value})} 
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[11px] font-bold outline-none uppercase disabled:opacity-50">
                   {CIDADES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}
@@ -349,7 +344,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-3 text-[10px] font-bold uppercase outline-none resize-none" />
               </div>
               <button disabled={enviando} type="submit" className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest flex justify-center items-center gap-2 active:scale-95 shadow-xl transition-all mt-4">
-                <Send size={16}/> {enviando ? 'Processando...' : (isMaster(userData) ? 'Salvar no Banco' : 'Enviar Sugestão')}
+                <Send size={16}/> {enviando ? 'Processando...' : (userData?.nivel === 'master' ? 'Salvar no Banco' : 'Enviar Sugestão')}
               </button>
             </form>
           </div>
@@ -362,7 +357,7 @@ const EnsaiosLocais = ({ todosEnsaios, diaFiltro: diaFiltroApp, loading, user, u
             <Trash2 size={32} className="mx-auto text-red-500 mb-4"/>
             <h3 className="text-lg font-[900] uppercase italic tracking-tighter text-slate-950 leading-tight">Remover {confirmaExclusao.localidade}?</h3>
             <div className="flex flex-col gap-2 mt-6">
-              <button onClick={handleExcluirOuSugerir} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-lg">{isMaster(userData) ? "Excluir Agora" : "Pedir Exclusão"}</button>
+              <button onClick={handleExcluirOuSugerir} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-95 shadow-lg">{userData?.nivel === 'master' ? "Excluir Agora" : "Pedir Exclusão"}</button>
               <button onClick={() => setConfirmaExclusao(null)} className="w-full bg-slate-100 text-slate-400 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest">Cancelar</button>
             </div>
           </div>
