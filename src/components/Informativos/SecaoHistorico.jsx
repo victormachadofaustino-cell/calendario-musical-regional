@@ -1,68 +1,84 @@
-// src/components/Informativos/SecaoHistorico.jsx
-import React, { useState, useEffect } from 'react'; // Ferramenta base do React para gerenciar o que aparece na tela e a memória do celular.
-import { db } from '../../firebaseConfig'; // Conecta com a central de dados do Firebase subindo dois níveis de pasta.
-import { doc, onSnapshot } from 'firebase/firestore'; // Ferramenta que vigia o banco de dados em tempo real em busca de atualizações.
-import { History, ExternalLink, Loader2 } from 'lucide-react'; // Biblioteca de ícones para o desenho do botão e animações.
+// src/components/Informativos/SecaoHistorico.jsx // Identifica o local exato do arquivo na estrutura de pastas.
+import React, { useState, useEffect } from 'react'; // Ferramenta fundamental para criar a interface e gerenciar a memória.
+import { db } from '../../firebaseConfig'; // Conecta com a central de dados subindo dois níveis de pasta.
+import { doc, onSnapshot } from 'firebase/firestore'; // Ferramenta que vigia o banco de dados em tempo real.
+import { History, ExternalLink, Loader2, AlertTriangle } from 'lucide-react'; // Biblioteca de ícones para o visual e alertas.
+import { registrarEvento } from '../../constants/comuns'; // Importa o "Olheiro" para registrar acessos no Dashboard.
 
-const SecaoHistorico = () => { // Início do componente que cria o botão de acesso direto ao arquivo do Histórico.
-  const [config, setConfig] = useState(null); // Variável de memória que guardará o link do PDF e a data vindos do banco.
-  const [carregando, setCarregando] = useState(true); // Controla o ícone de "girar" enquanto os dados viajam pela internet.
+const SecaoHistorico = ({ userData }) => { // Início do componente, agora recebendo os dados do usuário para a telemetria.
+  const [config, setConfig] = useState(null); // Memória que guarda o link e a data vindos do banco de dados.
+  const [carregando, setCarregando] = useState(true); // Controla se o ícone de "carregando" aparece na tela.
+  const [erroConexao, setErroConexao] = useState(false); // Nova fleg de segurança para avisar se o banco falhou.
 
-  useEffect(() => { // Lógica de "ouvido atento" que ativa assim que o músico abre esta parte do menu.
-    // O Maestro (onSnapshot) fica vigiando a gaveta "historico_musical" dentro das configurações.
+  // Link de segurança absoluto caso o banco esteja vazio ou o Master apague sem querer.
+  const LINK_SEGURANCA = "https://drive.google.com/file/d/1a9KtkE2Y9yz8IH-8iPS469q12BEUDqpx/view";
+
+  useEffect(() => { // Lógica que liga o "ouvido" do app assim que o componente entra em cena.
+    // O Maestro (onSnapshot) vigia a gaveta "historico_musical" dentro da pasta "configuracoes".
     const unsub = onSnapshot(doc(db, "configuracoes", "historico_musical"), (snap) => {
       if (snap.exists()) {
-        setConfig(snap.data()); // Se o Master mudar o link no painel, o app se atualiza sozinho aqui.
+        setConfig(snap.data()); // Se o Master trocou o link no painel, o app atualiza aqui na hora.
+        setErroConexao(false); // Garante que o sinal de erro suma se a conexão voltar.
       } else {
-        // Fallback: Link padrão de segurança com o arquivo real que você forneceu.
-        setConfig({ 
-          url: "https://drive.google.com/file/d/1w94EOUALaisb_MdUV6H7jqbI7MKSncKZ/view", 
-          atualizacao: "Sincronizado" 
-        });
+        // Se a gaveta não existir no banco, ele prepara o link de segurança.
+        setConfig({ url: LINK_SEGURANCA, atualizacao: "Link de Emergência" });
       }
-      setCarregando(false); // Avisa ao sistema que os dados chegaram e pode parar de mostrar o carregamento.
+      setCarregando(false); // Avisa ao sistema que a busca terminou.
     }, (error) => {
-      console.error("Erro ao sincronizar histórico:", error); // Registra falhas técnicas ocultas para o desenvolvedor.
-      setCarregando(false); // Para o carregamento mesmo com erro para não travar a tela do irmão.
+      console.error("Erro ao sincronizar histórico:", error); // Registra falhas técnicas no console para o Dev.
+      setErroConexao(true); // Ativa o aviso visual de erro para o irmão.
+      setCarregando(false); // Para o carregamento para não travar a tela.
     });
 
-    return () => unsub(); // Desliga a vigilância ao sair da tela para economizar a bateria do celular.
+    return () => unsub(); // Desliga a vigilância ao sair da tela para poupar bateria.
   }, []); 
 
-  if (carregando) { // Enquanto o app busca a informação no banco, mostra um aviso discreto.
+  // Função disparada ao tocar no botão para abrir o arquivo e avisar o sistema de telemetria.
+  const acaoAbrirDocumento = () => {
+    // Escolhe o link do banco ou o de segurança, removendo espaços em branco acidentais (.trim()).
+    const urlFinal = (config?.url || LINK_SEGURANCA).trim();
+    
+    // Registra no Dashboard do Master que o Histórico foi consultado.
+    registrarEvento('Documentos', 'Abrir PDF', 'Histórico Musical', userData);
+    
+    // Abre o documento em uma nova aba com segurança.
+    window.open(urlFinal, '_blank');
+  };
+
+  if (carregando) { // Enquanto os dados viajam, mostra uma animação discreta.
     return (
       <div className="flex items-center justify-center py-6 gap-3">
         <Loader2 className="animate-spin text-slate-300" size={20} />
-        <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest text-center">Acessando Arquivo...</span>
+        <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Sincronizando...</span>
       </div>
     );
   }
 
-  // Define qual será o link final que o botão vai abrir (Banco ou Padrão).
-  const URL_FINAL = config?.url || "https://drive.google.com/file/d/1w94EOUALaisb_MdUV6H7jqbI7MKSncKZ/view";
-  const DATA_ATT = config?.atualizacao || "2026";
-
   return ( // Início da parte visual que o irmão verá no celular.
     <div className="w-full animate-in slide-in-from-right-4">
-      {/* O CARD INTEIRO É UM BOTÃO: Ao tocar em qualquer lugar dele, abre o PDF imediatamente. */}
+      {/* Botão principal com efeito de clique e bordas arredondadas padrão Jundiaí. */}
       <button 
-        onClick={() => window.open(URL_FINAL, '_blank')} // Comando para abrir o Google Drive em uma nova aba do navegador.
-        className="w-full bg-slate-950 p-6 rounded-[2.2rem] shadow-xl flex items-center justify-between group active:scale-95 transition-all border border-slate-800"
+        onClick={acaoAbrirDocumento} // Chama a função que abre o arquivo e registra o evento.
+        className={`w-full p-6 rounded-[2.2rem] shadow-xl flex items-center justify-between group active:scale-95 transition-all border ${erroConexao ? 'bg-red-900/10 border-red-500' : 'bg-slate-950 border-slate-800'}`}
       >
         <div className="flex items-center gap-5">
-          {/* Ícone de histórico com cor Amarela (Amber) para destacar no fundo preto. */}
-          <div className="bg-white/10 p-3.5 rounded-2xl text-amber-500 shadow-inner group-hover:scale-110 transition-transform">
-            <History size={26} />
+          {/* Ícone que muda para alerta se houver erro de conexão com o Firebase. */}
+          <div className={`p-3.5 rounded-2xl shadow-inner group-hover:scale-110 transition-transform ${erroConexao ? 'bg-red-500 text-white' : 'bg-white/10 text-amber-500'}`}>
+            {erroConexao ? <AlertTriangle size={26} /> : <History size={26} />}
           </div>
           <div className="flex flex-col items-start text-left">
-            {/* Título principal com fonte grossa e itálica, padrão do app. */}
-            <span className="text-white text-[11px] font-[900] uppercase tracking-[0.2em] leading-none">Histórico Musical</span>
-            {/* Data vinda do Painel Master indicando a versão do documento. */}
-            <span className="text-slate-500 text-[8px] font-bold uppercase tracking-widest mt-2">Atualizado: {DATA_ATT}</span>
+            {/* Título principal do botão. */}
+            <span className="text-white text-[11px] font-[900] uppercase tracking-[0.2em] leading-none">
+              {erroConexao ? "Erro na Nuvem" : "Histórico Musical"}
+            </span>
+            {/* Exibe a data de atualização cadastrada pelo Master. */}
+            <span className="text-slate-500 text-[8px] font-bold uppercase tracking-widest mt-2">
+              {config?.atualizacao || "2026"}
+            </span>
           </div>
         </div>
         
-        {/* Ícone de seta indicando que um arquivo externo será aberto. */}
+        {/* Ícone de seta indicando abertura de link externo. */}
         <div className="bg-white/5 p-2 rounded-xl text-slate-600 group-hover:text-white transition-colors">
           <ExternalLink size={18} />
         </div>
@@ -71,4 +87,4 @@ const SecaoHistorico = () => { // Início do componente que cria o botão de ace
   );
 };
 
-export default SecaoHistorico; // Exporta este instrumento para ser usado no Hub de Informativos.
+export default SecaoHistorico; // Disponibiliza o componente para o palco principal.

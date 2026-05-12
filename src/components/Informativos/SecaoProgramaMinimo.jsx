@@ -1,10 +1,12 @@
+// src/components/Informativos/SecaoProgramaMinimo.jsx // Identifica que este arquivo cria o Modal de escolha do Programa Mínimo.
 import React, { useState, useEffect } from 'react'; // Ferramenta base do React para gerenciar o que aparece na tela e a memória do celular.
 import { db } from '../../firebaseConfig'; // Conexão oficial com o banco de dados da Regional, subindo dois níveis de pasta para achar o arquivo.
 import { doc, onSnapshot } from 'firebase/firestore'; // Ferramenta que vigia o banco de dados em tempo real em busca de novos links.
 import { Music2, LayoutDashboard, X, ExternalLink, Loader2, BookOpen } from 'lucide-react'; // Biblioteca de ícones para músicos, organistas e símbolos de sistema.
 import { createPortal } from 'react-dom'; // Ferramenta que projeta a janela flutuante (modal) por cima de todo o conteúdo do app.
+import { registrarEvento } from '../../constants/comuns'; // Importa o "Olheiro" para registrar quando alguém abre o programa no Dashboard.
 
-const SecaoProgramaMinimo = ({ aoFechar }) => { // Início do componente que cria a escolha entre Músicos e Organistas.
+const SecaoProgramaMinimo = ({ aoFechar, userData }) => { // Início do componente, agora preparado para receber dados do usuário (userData).
   // Variável de memória que guardará os links e a data de atualização vindos do Painel Master.
   const [config, setConfig] = useState(null); 
   // Variável que controla se o símbolo de "carregando" deve aparecer enquanto os links viajam pela internet.
@@ -31,6 +33,13 @@ const SecaoProgramaMinimo = ({ aoFechar }) => { // Início do componente que cri
 
     return () => unsub(); // Desliga a vigilância ao fechar a janelinha para economizar a bateria do celular do irmão.
   }, []); 
+
+  // Função interna para abrir os documentos e avisar o "Olheiro" do sistema.
+  const acaoAbrirDoc = (url, categoria) => {
+    const linkLimpo = url.trim(); // Remove espaços invisíveis que o Master possa ter colado por erro no banco.
+    registrarEvento('Documentos', 'Abrir PDF', `Programa Mínimo - ${categoria}`, userData); // Registra se foi aberto Músicos ou Organistas.
+    window.open(linkLimpo, '_blank'); // Abre o arquivo do Google Drive em uma nova aba.
+  };
 
   // Define qual será o link final dos Músicos (prioriza o banco Master, se não houver, usa o padrão).
   const LINK_MUSICOS = config?.urlMusicos || "https://drive.google.com/file/d/1SP1s7csB_3uvpDxpEId9yEQTUTP3io3_/view";
@@ -64,7 +73,7 @@ const SecaoProgramaMinimo = ({ aoFechar }) => { // Início do componente que cri
           <div className="space-y-3">
             {/* BOTÃO PARA MÚSICOS (Cor Azul oficial) */}
             <button 
-              onClick={() => window.open(LINK_MUSICOS, '_blank')} // Abre o PDF de músicos no navegador.
+              onClick={() => acaoAbrirDoc(LINK_MUSICOS, 'Músicos')} // Abre o PDF e avisa o Olheiro.
               className="w-full bg-blue-600 p-6 rounded-[2rem] flex items-center justify-between group active:scale-95 transition-all shadow-lg shadow-blue-100"
             >
               <div className="flex items-center gap-4">
@@ -81,7 +90,7 @@ const SecaoProgramaMinimo = ({ aoFechar }) => { // Início do componente que cri
 
             {/* BOTÃO PARA ORGANISTAS (Cor Roxa oficial) */}
             <button 
-              onClick={() => window.open(LINK_ORGANISTAS, '_blank')} // Abre o PDF de organistas no navegador.
+              onClick={() => acaoAbrirDoc(LINK_ORGANISTAS, 'Organistas')} // Abre o PDF e avisa o Olheiro.
               className="w-full bg-purple-600 p-6 rounded-[2rem] flex items-center justify-between group active:scale-95 transition-all shadow-lg shadow-purple-100"
             >
               <div className="flex items-center gap-4">
